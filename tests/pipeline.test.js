@@ -36,6 +36,12 @@ describe('extract', () => {
     expect(sheet.extras[0].rows).toHaveLength(3);
     expect(sheet.sections[0].rows[3].text).toContain('¼ Drehung rechts herum');
   });
+  it('keeps notes without counts, such as restarts', () => {
+    const s = extractSheet('<DIV class=pro_o>S1: x</DIV><DIV class=pro_l>1-2</DIV><DIV class=pro_s>Schritt nach vorn mit rechts - Halten</DIV><DIV class=pro_l>&nbsp;</DIV><DIV class=pro_s>(<font color="#FF00FF">Restart:</font> In der 4. Runde - Richtung 12 Uhr - hier abbrechen und von vorn beginnen)</DIV><DIV class=pro_l>3-4</DIV><DIV class=pro_s>Schritt nach vorn mit links - Halten</DIV>');
+    expect(s.sections[0].rows).toHaveLength(2);
+    expect(s.sections[0].rows[0].note).toBe('(Restart: In der 4. Runde - Richtung 12 Uhr - hier abbrechen und von vorn beginnen)');
+    expect(s.sections[0].rows[1].note).toBeUndefined();
+  });
   it('reads plain text', () => {
     const t = extractSheet('Testtanz\nBeschreibung: 16 count, 4 wall\nS1: Walk\n1-2\tSchritt nach vorn mit rechts - Schritt nach vorn mit links\n3&4 Schritt nach vorn mit rechts - Linken Fuß an rechten heransetzen und Schritt nach vorn mit rechts');
     expect(t.title).toBe('Testtanz');
@@ -182,6 +188,29 @@ describe('parse', () => {
 
     // Hook vor dem Schienbein ist eine Bewegung
     expect(types('7-8', 'Rechte Hacke vorn auftippen - Rechten Fuß anheben und vor linkem Schienbein kreuzen')).toEqual(['touchR', 'hookR']);
+  });
+  it('lifts the knee across the other leg', () => {
+    const a = parseRow({ counts: '3&4', text: 'Rechte Fußspitze rechts auftippen - Rechtes Knie über linkes anheben und rechte Fußspitze rechts auftippen' }).actions;
+    expect(a.map((x) => x.moves[0].type + x.moves[0].foot)).toEqual(['touchR', 'hitchR', 'touchR']);
+    expect(a[1].moves[0].across).toBe(true);
+    expect(parseRow({ counts: '1', text: 'Linkes Knie anheben' }).actions[0].moves[0].across).toBe(false);
+  });
+  it('animates repeated kicks and touches (Miles On It)', () => {
+    expect(types('1-4', '3 Schritte nach vorn (r - l . r) - Linken Fuß nach vorn kicken')).toEqual(['stepR', 'stepL', 'stepR', 'kickL']);
+    const tl = new Timeline(buildChoreo(extractSheet('T\n1-2 Rechten Fuß 2x nach vorn kicken\n3-4 Rechte Hacke vorn 2x auftippen')).main);
+    const [k1, k2, t1, t2] = tl.events;
+    expect(k1.state.fx.repeat).toBeUndefined();
+    expect(k2.state.fx.repeat).toBe('R');
+    expect(t1.state.fx.repeat).toBeUndefined();
+    expect(t2.state.fx.repeat).toBe('R');
+    // zwischen den beiden Kicks wird der Fuß zurückgenommen …
+    const mid = tl.sample(0.6).pose.feet.R;
+    expect(mid.y).toBeLessThan(k1.state.feet.R.y - 0.1);
+    expect(Math.abs(mid.z)).toBeLessThan(Math.abs(k1.state.feet.R.z) - 0.1);
+    // … und landet wieder in der Kick-Position
+    expect(tl.sample(1).pose.feet.R.y).toBeCloseTo(k1.state.feet.R.y);
+    // zwischen den beiden Hacken-Tipps hebt der Fuß kurz ab
+    expect(tl.sample(2.6).pose.feet.R.y).toBeGreaterThan(t1.state.feet.R.y + 0.05);
   });
   it('keeps turns and clocks', () => {
     const a = parseRow({ counts: '7-8', text: 'Rechten Fuß über linken kreuzen - ¼ Drehung rechts herum und Schritt nach hinten mit links (3 Uhr)' }).actions;

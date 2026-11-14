@@ -33,6 +33,7 @@ export class SheetView {
         const li = el('li', 'row');
         li.tabIndex = 0;
         li.append(el('span', 'row-counts', row.counts), el('span', 'row-text', row.text));
+        if (row.note) li.append(el('span', 'row-note', row.note.replace(/^\((.*)\)$/gm, '$1')));
         if (row.warnings?.length) {
           li.classList.add('warn');
           li.append(el('span', 'row-warn', '⚠ ' + row.warnings.join(' ')));

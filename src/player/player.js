@@ -79,6 +79,16 @@ function blend(A, B, p) {
       x += R[0] * sgn(f) * 0.2 * arc;
       z += R[1] * sgn(f) * 0.2 * arc;
     }
+    if (fx.repeat === f) {
+      // Wiederholte Geste: in der Luft (Kick, Hitch) Fuß zurücknehmen, am Boden (Tippen) kurz anheben
+      if (b.y > 0.1) {
+        x = lerp(x, b.gx, 0.6 * arc);
+        z = lerp(z, b.gz, 0.6 * arc);
+        y -= b.y * 0.55 * arc;
+      } else {
+        y += 0.09 * arc;
+      }
+    }
     if (dist > 0.03) [x, z] = clearOtherFoot(x, z, a, b, A.feet[other(f)], B.feet[other(f)], e, p, fx.cross?.foot === f ? fx.cross.behind : null);
     let pitch = lerp(a.pitch, b.pitch, e);
     if (fx.bounce?.includes(f)) {
@@ -101,6 +111,9 @@ function blend(A, B, p) {
     weight: p < 0.5 ? A.weight : B.weight,
   };
 }
+
+// Ruhige Standpose zu einem Zustand, z. B. bevor ein Tanz geladen ist
+export const standingPose = (state) => blend(state, state, 1);
 
 export class Timeline {
   constructor(data) {

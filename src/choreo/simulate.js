@@ -136,7 +136,8 @@ function applyMove(s, m) {
       place(add(home(0.8), m.dir ? dv(0.45) : [F[0] * 0.45, F[1] * 0.45]), { y: 0.3, pitch: -0.5, ground: false });
       break;
     case 'hitch':
-      place(add(home(0.75), [F[0] * 0.12, F[1] * 0.12]), { y: m.small ? 0.16 : 0.42, pitch: 0.5, ground: false });
+      // across: Knie über das andere Bein heben → Fuß vor dem Standbein
+      place(add(home(m.across ? 0.1 : 0.75), [F[0] * (m.across ? 0.2 : 0.12), F[1] * (m.across ? 0.2 : 0.12)]), { y: m.small ? 0.16 : 0.42, pitch: 0.5, ground: false });
       break;
     case 'scuff':
       place(add(home(), m.dir ? dv(0.32) : [F[0] * 0.32, F[1] * 0.32]), { y: 0.06, pitch: -0.25, ground: false });
@@ -218,7 +219,17 @@ function applyAction(state, action) {
   s.gesture = null;
   s.sway = null;
   s.fx = {};
-  for (const m of action.moves) applyMove(s, m);
+  for (const m of action.moves) {
+    applyMove(s, m);
+    // Dieselbe Geste noch einmal ("2x kicken", "2x auftippen"): Fuß steht schon dort, wo er hin soll –
+    // für die Animation merken, damit er dazwischen sichtbar zurückgenommen wird.
+    if (['kick', 'touch', 'hitch', 'scuff', 'hook'].includes(m.type)) {
+      const f = s.lastFoot;
+      const a = state.feet[f];
+      const b = s.feet[f];
+      if (Math.hypot(a.x - b.x, a.z - b.z) < 0.02 && Math.abs(a.y - b.y) < 0.02) s.fx.repeat = f;
+    }
+  }
   updateCom(s);
   return s;
 }

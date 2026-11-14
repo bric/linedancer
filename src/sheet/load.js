@@ -1,5 +1,3 @@
-export const EXAMPLE_URL = 'https://www.get-in-line.de/dances/My%20Mama%20Said_-_Glover.htm';
-
 // Übersetzt eine get-in-line.de-Adresse auf den lokalen Proxy-Pfad (siehe vite.config.js).
 export function toProxyUrl(input) {
   let u;

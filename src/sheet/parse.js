@@ -86,7 +86,7 @@ export function parsePart(src) {
   if (/schwingen/.test(t)) return out('scuff');
   if (/schleifen/.test(t)) return { type: 'modPrev', patch: {} };
   if (/kick/.test(t)) return out('kick');
-  if (/knie\b.*(heben|hochziehen)/.test(t)) return out('hitch', { small: /wenig|leicht/.test(t) });
+  if (/knie\b.*(heben|hochziehen)/.test(t)) return out('hitch', { small: /wenig|leicht/.test(t), across: /über (?:das |dem )?(?:link|recht)e[sn]?/.test(t) });
   if (/drehen/.test(t) && /spitze|hacke|ferse/.test(t)) {
     // Swivels: "Beide Hacken nach links drehen - … wieder zur Mitte drehen"
     const mode = /mitte|zurück/.test(t) ? 'centre' : /auseinander|außen/.test(t) ? 'apart' : /innen|zusammen/.test(t) ? 'in' : 'side';
@@ -222,7 +222,8 @@ function parseSegment(seg) {
     clock = (+(h1 ?? h2) % 12) * 30 + +(m1 ?? m2 ?? 0) / 2;
     return '';
   });
-  text = text.replace(/\(\s*([rl](?:\s*[-–,]\s*[rl])+)\s*\)/i, (m, list) => {
+  // Fußfolge "(r - l - r)", tolerant gegenüber Tippfehlern wie "(r - l . r)"
+  text = text.replace(/\(\s*([rl](?:\s*[-–,.]\s*[rl])+)\s*\)/i, (m, list) => {
     feet = list.toUpperCase().match(/[RL]/g);
     return '';
   });

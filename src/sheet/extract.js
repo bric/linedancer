@@ -88,6 +88,11 @@ export function extractFromHtml(html) {
         sheet.sections.push(current);
       }
       if (counts) current.rows.push({ counts, text });
+      else if (text && current.rows.length) {
+        // Zeile ohne Zählzeiten, z. B. "(Restart: In der 4. Runde … hier abbrechen)": Anmerkung zur Zeile davor
+        const prev = current.rows.at(-1);
+        prev.note = prev.note ? `${prev.note}\n${text}` : text;
+      }
       counts = null;
     }
   }

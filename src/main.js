@@ -1,9 +1,9 @@
 import { Stage } from './scene.js';
 import { Figure } from './figure/figure.js';
-import { Timeline } from './player/player.js';
+import { Timeline, standingPose } from './player/player.js';
 import { extractSheet } from './sheet/extract.js';
-import { fetchSheet, EXAMPLE_URL } from './sheet/load.js';
-import { buildChoreo, fmtClock } from './choreo/simulate.js';
+import { fetchSheet } from './sheet/load.js';
+import { buildChoreo, fmtClock, initialState } from './choreo/simulate.js';
 import { SheetView } from './ui/sheetView.js';
 
 const $ = (id) => document.getElementById(id);
@@ -255,10 +255,8 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
-ui.url.value = EXAMPLE_URL;
+// Start ohne geladenen Tanz: Figur steht bereit, bis eine Beschreibung geladen wird
+figure.update(standingPose(initialState()));
+ui.stepText.textContent = 'Noch kein Tanz geladen';
+ui.info.textContent = 'Oben eine Adresse von get-in-line.de laden oder über „Text einfügen“ eine Schrittbeschreibung einfügen.';
 requestAnimationFrame(frame);
-loadUrl(EXAMPLE_URL).then(() => {
-  // ?t=12.5 öffnet die Anwendung direkt an dieser Zählzeit (in Schlägen ab Tanzbeginn)
-  const t = parseFloat(new URLSearchParams(location.search).get('t'));
-  if (app.tl && Number.isFinite(t)) seek(Math.max(app.tl.start, t));
-});
