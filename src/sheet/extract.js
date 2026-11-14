@@ -125,6 +125,12 @@ export function extractFromText(text) {
       sheet.hint = sheet.hint || line;
       continue;
     }
+    // Zählzeiten allein in einer Zeile, Beschreibung in der nächsten (je nach Browser beim Kopieren)
+    const alone = /^(?:&\s*)?\d{1,2}(?:\s*(?:[&\-–,]|und)\s*\d{0,2})*&?$/.test(line) && lines[i + 1] && !/^[\d&]/.test(lines[i + 1]);
+    if (alone) {
+      lines[i + 1] = `${line} ${lines[i + 1]}`;
+      continue;
+    }
     const row = line.match(rowRe);
     if (isRow(row)) {
       if (!current) {

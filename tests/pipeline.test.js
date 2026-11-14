@@ -42,6 +42,30 @@ describe('extract', () => {
     expect(s.sections[0].rows[0].note).toBe('(Restart: In der 4. Runde - Richtung 12 Uhr - hier abbrechen und von vorn beginnen)');
     expect(s.sections[0].rows[1].note).toBeUndefined();
   });
+  it('reads text copied from a get-in-line page', () => {
+    const t = extractSheet(`My Mama Said
+Choreographie: Maddison Glover
+Beschreibung:48 count, 2 wall, intermediate line dance; 0 restarts, 1 ending
+Musik:My Mama Said von The Stompers
+S1: Step, step, back 2
+1-2Schritt nach vorn mit rechts - Kleinen Schritt nach vorn mit links
+3-4
+Kleinen Schritt nach hinten mit rechts - Halten
+&5-6Schritt nach links mit links und rechten Fuß an linken heransetzen - Halten
+Wiederholung bis zum Ende
+Ending/Ende  (nach Ende der 7. Runde - 6 Uhr)
+Stomp forward, clap
+1-2Rechten Fuß vorn aufstampfen - Klatschen`);
+    expect(t.title).toBe('My Mama Said');
+    expect(t.choreo).toBe('Maddison Glover');
+    expect([t.counts, t.walls]).toEqual([48, 2]);
+    expect(t.sections).toHaveLength(1);
+    expect(t.sections[0].rows.map((r) => r.counts)).toEqual(['1-2', '3-4', '&5-6']);
+    expect(t.sections[0].rows[1].text).toBe('Kleinen Schritt nach hinten mit rechts - Halten');
+    expect(t.extras).toHaveLength(1);
+    expect(t.extras[0].note).toBe('nach Ende der 7. Runde - 6 Uhr');
+    expect(t.extras[0].rows).toHaveLength(1);
+  });
   it('reads plain text', () => {
     const t = extractSheet('Testtanz\nBeschreibung: 16 count, 4 wall\nS1: Walk\n1-2\tSchritt nach vorn mit rechts - Schritt nach vorn mit links\n3&4 Schritt nach vorn mit rechts - Linken Fuß an rechten heransetzen und Schritt nach vorn mit rechts');
     expect(t.title).toBe('Testtanz');

@@ -15,8 +15,15 @@ export function toProxyUrl(input) {
   return '/sheet/' + u.pathname.slice('/dances/'.length);
 }
 
+// Der Proxy existiert nur lokal (npm run dev / npm run preview), nicht auf GitHub Pages.
+export const hasProxy = () => ['localhost', '127.0.0.1', '[::1]'].includes(globalThis.location?.hostname);
+export const PASTE_HINT =
+  'Bitte die Seite mit der Schrittbeschreibung im Browser öffnen, alles markieren und kopieren und hier über „Text einfügen“ einfügen.';
+
 export async function fetchSheet(input) {
-  const res = await fetch(toProxyUrl(input));
+  const url = toProxyUrl(input);
+  if (!hasProxy()) throw new Error(`Das direkte Laden per Adresse funktioniert nur in der lokal gestarteten Version. ${PASTE_HINT}`);
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Die Seite konnte nicht geladen werden (HTTP ${res.status}).`);
   const html = await res.text();
   if (!/pro_s/i.test(html)) {

@@ -2,7 +2,7 @@ import { Stage } from './scene.js';
 import { Figure } from './figure/figure.js';
 import { Timeline, standingPose } from './player/player.js';
 import { extractSheet } from './sheet/extract.js';
-import { fetchSheet } from './sheet/load.js';
+import { fetchSheet, hasProxy } from './sheet/load.js';
 import { buildChoreo, fmtClock, initialState } from './choreo/simulate.js';
 import { SheetView } from './ui/sheetView.js';
 
@@ -258,5 +258,7 @@ window.addEventListener('keydown', (e) => {
 // Start ohne geladenen Tanz: Figur steht bereit, bis eine Beschreibung geladen wird
 figure.update(standingPose(initialState()));
 ui.stepText.textContent = 'Noch kein Tanz geladen';
-ui.info.textContent = 'Oben eine Adresse von get-in-line.de laden oder über „Text einfügen“ eine Schrittbeschreibung einfügen.';
+ui.info.textContent = hasProxy()
+  ? 'Oben eine Adresse von get-in-line.de laden oder über „Text einfügen“ eine Schrittbeschreibung einfügen.'
+  : 'Schrittbeschreibung im Browser öffnen, den Text kopieren und über „Text einfügen“ laden.';
 requestAnimationFrame(frame);

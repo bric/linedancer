@@ -10,6 +10,7 @@ const proxy = {
 };
 
 export default defineConfig({
+  base: './', // relative Pfade, damit der Build auch unter bric.github.io/linedancer/ läuft
   server: { proxy },
   preview: { proxy },
   test: { environment: 'node' },
