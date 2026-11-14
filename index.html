@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LineDancer – Tanzschritte in 3D lernen</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>LineDancer</h1>
+      <form id="load-form">
+        <input id="url" type="url" required placeholder="https://www.get-in-line.de/dances/…" aria-label="Adresse der Schrittbeschreibung" />
+        <button type="submit">Laden</button>
+      </form>
+      <button id="paste-open" type="button" class="ghost">Text einfügen</button>
+    </header>
+
+    <p id="status" role="status" hidden></p>
+
+    <main>
+      <section id="stage">
+        <canvas id="canvas"></canvas>
+        <div id="hud">
+          <div id="count">–</div>
+          <div id="hud-text">
+            <div id="step-text"></div>
+            <div id="info"></div>
+          </div>
+        </div>
+        <div id="views" role="group" aria-label="Kamera">
+          <button type="button" data-view="back" class="active">Von hinten</button>
+          <button type="button" data-view="front">Von vorn</button>
+          <button type="button" data-view="top">Von oben</button>
+        </div>
+        <div id="legend"><span class="dot l"></span>links <span class="dot r"></span>rechts</div>
+      </section>
+      <aside id="sheet" aria-label="Schrittbeschreibung"></aside>
+    </main>
+
+    <footer id="controls">
+      <div class="transport">
+        <button type="button" id="restart" title="Zum Anfang (Pos1)">⏮</button>
+        <button type="button" id="prev" title="Eine Zählzeit zurück (←)">−1</button>
+        <button type="button" id="play" class="primary" title="Abspielen/Pause (Leertaste)">▶</button>
+        <button type="button" id="next" title="Eine Zählzeit vor (→)">+1</button>
+      </div>
+      <label>Tempo <input id="rate" type="range" min="25" max="150" step="5" value="100" /> <output id="rate-out">100 %</output></label>
+      <label>BPM <input id="bpm" type="number" min="40" max="220" value="100" /></label>
+      <label><input id="loop" type="checkbox" /> Abschnitt wiederholen</label>
+      <label><input id="click" type="checkbox" /> Metronom</label>
+    </footer>
+
+    <dialog id="paste-dialog">
+      <form method="dialog">
+        <h2>Schrittbeschreibung einfügen</h2>
+        <p>Seitenquelltext (HTML) oder reinen Text einfügen – pro Zeile Zählzeiten und Beschreibung, z. B. „1-2 Schritt nach vorn mit rechts - Schritt nach vorn mit links“.</p>
+        <textarea id="paste-text" rows="14" spellcheck="false"></textarea>
+        <div class="dialog-actions">
+          <button value="cancel" class="ghost">Abbrechen</button>
+          <button value="ok" class="primary">Übernehmen</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
