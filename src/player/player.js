@@ -1,7 +1,7 @@
 // Zeitachse über den Keyframes: liefert zu jeder Zeit (in Schlägen) eine interpolierte Pose.
 // Eine Bewegung "landet" auf ihrer Zählzeit, läuft also im Intervall davor ab.
 
-import { cloneState, rightV, sgn } from '../choreo/simulate.js';
+import { cloneState, fwdV, rightV, sgn, other } from '../choreo/simulate.js';
 
 const HANDS = {
   belt: { L: [-0.17, 0.05, 0.1], R: [0.17, 0.05, 0.1] },
@@ -29,6 +29,33 @@ function shifted(state, k, drift) {
   return s;
 }
 
+// Ein Fuß kann nicht durch den anderen hindurch: Führt der gerade Weg über den stehenden Fuß,
+// wird er vorn (bzw. hinten) um ihn herumgeführt. Gerechnet wird im Koordinatensystem des
+// stehenden Fußes o: lx = seitlich, lf = nach vorn.
+const CLEAR = 0.3; // nötiger Abstand Knöchel–Knöchel in Fußrichtung, wenn die Füße seitlich überlappen
+const BAND = 0.2; // seitlicher Bereich, in dem ausgewichen wird
+function clearOtherFoot(x, z, a, b, oA, oB, e, p, behindHint) {
+  // Der stehende Fuß kann sich mitdrehen (Drehung auf dem Ballen) – daher seine aktuelle Lage verwenden
+  const o = { x: lerp(oA.x, oB.x, e), z: lerp(oA.z, oB.z, e), rot: lerp(oA.rot, oB.rot, e) };
+  const F = fwdV(o.rot);
+  const localTo = (ref) => {
+    const f = fwdV(ref.rot);
+    const r = rightV(ref.rot);
+    return (px, pz) => [(px - ref.x) * r[0] + (pz - ref.z) * r[1], (px - ref.x) * f[0] + (pz - ref.z) * f[1]];
+  };
+  const [lx, lf] = localTo(o)(x, z);
+  const need = CLEAR * (1 - (lx / BAND) ** 2);
+  if (need <= 0) return [x, z];
+  // vorn oder hinten herum: laut Schritt ("über"/"hinter"), sonst dort, wo Start und Ziel liegen
+  const ends = localTo(oA)(a.x, a.z)[1] + localTo(oB)(b.x, b.z)[1];
+  const side = behindHint === true ? -1 : behindHint === false ? 1 : ends < -1e-6 ? -1 : 1;
+  if (side * lf >= need) return [x, z];
+  // an Start und Ziel nichts verschieben, dazwischen voll ausweichen
+  const w = Math.min(1, 3 * Math.sin(Math.PI * p));
+  const shift = (side * need - lf) * w;
+  return [x + F[0] * shift, z + F[1] * shift];
+}
+
 function blend(A, B, p) {
   const e = smooth(p);
   const arc = Math.sin(Math.PI * p);
@@ -52,6 +79,7 @@ function blend(A, B, p) {
       x += R[0] * sgn(f) * 0.2 * arc;
       z += R[1] * sgn(f) * 0.2 * arc;
     }
+    if (dist > 0.03) [x, z] = clearOtherFoot(x, z, a, b, A.feet[other(f)], B.feet[other(f)], e, p, fx.cross?.foot === f ? fx.cross.behind : null);
     let pitch = lerp(a.pitch, b.pitch, e);
     if (fx.bounce?.includes(f)) {
       y += 0.05 * arc;

@@ -92,7 +92,12 @@ export function parsePart(src) {
     const mode = /mitte|zurück/.test(t) ? 'centre' : /auseinander|außen/.test(t) ? 'apart' : /innen|zusammen/.test(t) ? 'in' : 'side';
     return out('swivel', { part: /spitze/.test(t) ? 'toe' : 'heel', mode, both: /beide|hacken|spitzen/.test(t) });
   }
-  if (/\b(fuß|bein)\b.*anheben/.test(t)) return out('hook', { behind: /hinter/.test(t) });
+  // (kein \b nach "ß": das gilt in JS-Regexen nicht als Wortzeichen)
+  if (/(fuß|bein)\s.*anheben/.test(t)) {
+    // "…, rechten Fuß etwas anheben": Stilhinweis zur Bewegung davor, keine eigene Zählzeit
+    if (/\b(etwas|leicht|wenig)\b/.test(t)) return { type: 'modPrev', patch: {}, add: { type: 'hook', foot, small: true } };
+    return out('hook', { behind: /hinter/.test(t) });
+  }
   if (/heranziehen/.test(t)) return out('touch', { part: 'flat', beside: true });
   if (/hacken?\b.*bounce/.test(t)) return out('bounce', { both: /beide|hacken/.test(t) });
   if (/hacken?\b.*heben/.test(t)) return out('heelUp');
@@ -164,6 +169,7 @@ export function mergeUnits(units) {
     if (m.type === 'modPrev') {
       if (out.length) {
         Object.assign(out.at(-1).moves[0], m.patch);
+        if (m.add) out.at(-1).moves.push(m.add);
         out.at(-1).raw += ', ' + u.raw;
       }
       continue;

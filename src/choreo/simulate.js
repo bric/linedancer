@@ -103,6 +103,7 @@ function applyMove(s, m) {
       const k = m.behind ? -0.13 : 0.13;
       place([base.gx - R[0] * sgn(f) * 0.14 + F[0] * k, base.gz - R[1] * sgn(f) * 0.14 + F[1] * k]);
       takeWeight(f);
+      s.fx.cross = { foot: f, behind: !!m.behind };
       break;
     }
     case 'together':
@@ -119,7 +120,8 @@ function applyMove(s, m) {
       s.fx.stomp = f;
       break;
     case 'touch': {
-      const k = m.cross === 'behind' ? -0.2 : 0.2;
+      const k = m.cross === 'behind' ? -0.28 : 0.28; // weit genug, dass Spitze und Hacke nicht ineinander stehen
+      if (m.cross) s.fx.cross = { foot: f, behind: m.cross === 'behind' };
       const p = m.cross
         ? [base.gx - R[0] * sgn(f) * 0.07 + F[0] * k, base.gz - R[1] * sgn(f) * 0.07 + F[1] * k]
         : m.dir && !m.beside
@@ -167,6 +169,11 @@ function applyMove(s, m) {
       s.sway = m.dir;
       break;
     case 'hook':
+      if (m.small) {
+        // Fuß nur leicht vom Boden lösen, wo er steht
+        Object.assign(self, { y: 0.07, pitch: 0.25 });
+        break;
+      }
       place(add(home(0.3), [F[0] * (m.behind ? -0.18 : 0.15), F[1] * (m.behind ? -0.18 : 0.15)]), { y: 0.32, pitch: 0.6, ground: false });
       break;
     case 'swivel': {

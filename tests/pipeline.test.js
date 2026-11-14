@@ -143,6 +143,21 @@ describe('parse', () => {
     expect(l2.x - fan[3].state.feet.L.x).toBeLessThan(-0.07); // linke Hacke nach links
     expect([r1.x, r1.z]).toEqual([r1.gx, r1.gz]);
   });
+  it('treats "Fuß etwas anheben" as styling of the rock step', () => {
+    const row = { counts: '5-6', text: 'Schritt nach vorn mit links, rechten Fuß etwas anheben - Gewicht zurück auf den rechten Fuß' };
+    const a = parseRow(row);
+    expect(a.unknown || a.uncertain).toBe(false);
+    expect(a.actions.map((x) => x.moves.map((m) => m.type + m.foot).join('+'))).toEqual(['stepL+hookR', 'recoverR']);
+    const ev = buildChoreo(extractSheet(`T\n1-2 2 Schritte nach vorn (r - l)\n3-4 Schritt nach vorn mit rechts - Halten\n${row.counts} ${row.text}`)).main.events.filter((e) => e.round === 0);
+    const [rock, rec] = [ev[4].state, ev[5].state];
+    expect(rock.weight).toBe('L');
+    expect(rock.feet.R.y).toBeGreaterThan(0.05); // rechter Fuß leicht angehoben …
+    expect([rock.feet.R.x, rock.feet.R.z]).toEqual([rock.feet.R.gx, rock.feet.R.gz]); // … an seinem Platz
+    expect(rec.weight).toBe('R');
+    expect(rec.feet.R.y).toBe(0);
+    expect(types('3-4', 'Rechten Fuß hinter linkem Bein anheben - Rechten Fuß an linken heransetzen')).toEqual(['hookR', 'togetherR']);
+    expect(types('1-2', 'Linken Fuß anheben - Halten')).toEqual(['hookL', 'hold']);
+  });
   it('keeps turns and clocks', () => {
     const a = parseRow({ counts: '7-8', text: 'Rechten Fuß über linken kreuzen - ¼ Drehung rechts herum und Schritt nach hinten mit links (3 Uhr)' }).actions;
     expect(a[1].moves[0]).toMatchObject({ type: 'step', foot: 'L', turn: { frac: 0.25, dir: 'R' }, dir: { side: 0, fwd: -1 } });
@@ -306,6 +321,28 @@ describe('timeline', () => {
     expect(event).toBe(ev);
     expect(pose.feet.R.x).toBeCloseTo(ev.state.feet.R.x);
     expect(pose.theta).toBeCloseTo(ev.state.theta);
+  });
+  it('never moves one foot through the other', () => {
+    // Abstand der Füße im Koordinatensystem des jeweils anderen Fußes: überlappen sie seitlich,
+    // müssen sie in Fußrichtung auseinander liegen (und umgekehrt).
+    const check = (text, label) => {
+      const t2 = new Timeline(buildChoreo(extractSheet(text)).main);
+      for (let t = t2.start; t < t2.length; t += 0.02) {
+        const { pose } = t2.sample(t);
+        const { L, R } = pose.feet;
+        if (L.y > 0.2 || R.y > 0.2) continue; // Kick/Hitch: Fuß ist deutlich über dem anderen
+        const th = (R.rot * Math.PI) / 180;
+        const dx = L.x - R.x;
+        const dz = L.z - R.z;
+        const lx = dx * Math.cos(th) + dz * Math.sin(th);
+        const lf = dx * Math.sin(th) - dz * Math.cos(th);
+        if (Math.abs(lx) < 0.08) expect(Math.abs(lf), `${label} t=${t.toFixed(2)} lx=${lx.toFixed(2)}`).toBeGreaterThan(0.22);
+      }
+    };
+    check('T\n1-2 Schritt nach rechts mit rechts - Linken Fuß über rechten kreuzen\n3-4 Schritt nach rechts mit rechts - Linken Fuß hinter rechten kreuzen\n5-6 Schritt nach rechts mit rechts - Linken Fuß an rechten heransetzen\n7-8 Rechten Fuß über linken kreuzen - Schritt nach links mit links', 'weave');
+    check('T\n1-2 Schritt nach rechts mit rechts - Linke Fußspitze hinter rechtem Fuß auftippen\n3-4 Schritt nach links mit links - Rechte Fußspitze hinter linkem Fuß auftippen', 'touch behind');
+    check('T\n1-4 Jazz box R\n5-8 Vine L', 'jazz+vine');
+    check(html, 'My Mama Said');
   });
   it('continues seamlessly into the next cycle', () => {
     const a = tl.sample(tl.length - 0.001).pose;
