@@ -90,6 +90,13 @@ export function parsePart(src) {
   if (/drehen/.test(t) && /spitze|hacke|ferse/.test(t)) {
     // Swivels: "Beide Hacken nach links drehen - … wieder zur Mitte drehen"
     const mode = /mitte|zurück/.test(t) ? 'centre' : /auseinander|außen/.test(t) ? 'apart' : /innen|zusammen/.test(t) ? 'in' : 'side';
+    // "Linke Hacke … zum rechten Fuß drehen": der genannte Fuß ist das Ziel, der andere dreht dorthin
+    const to = t.match(/\b(?:zum|zu|an den|richtung) (recht|link)e[nm] fuß/);
+    if (to && mode === 'side') {
+      const target = to[1] === 'recht' ? 'R' : 'L';
+      const own = footOf(t.replace(to[0], ''));
+      return out('swivel', { part: /spitze/.test(t) ? 'toe' : 'heel', mode, both: false, foot: own || (target === 'R' ? 'L' : 'R'), dir: { side: target === 'R' ? 1 : -1, fwd: 0 }, toward: !own });
+    }
     return out('swivel', { part: /spitze/.test(t) ? 'toe' : 'heel', mode, both: /beide|hacken|spitzen/.test(t) });
   }
   // (kein \b nach "ß": das gilt in JS-Regexen nicht als Wortzeichen)
@@ -128,8 +135,10 @@ export function parsePart(src) {
   // "… nach vorn, hinten, vorn und wieder nach hinten schwingen": nur eine Richtung, die Bewegung steht daneben
   const bare = !!dir && /^(?:(?:wieder|und|nach|schräg|rechts|links|vorne?|hinten|zurück)\s*)+$/.test(t);
   // "Beide Hacken, Fußspitzen, Hacken und wieder Fußspitzen nach links drehen": nur das Körperteil genannt
-  const po = t.match(/^(?:(?:beide|wieder|und|dann)\s+)*(hacken?|fersen?|fußspitzen?|spitzen?)$/);
-  return { ...mv, type: 'unknown', dir, bare, partOnly: po ? (/spitze/.test(po[1]) ? 'toe' : 'heel') : null };
+  const po = t.match(/^(?:(?:beide|wieder|und|dann|(?:link|recht)e[nr]?)\s+)*(hacken?|fersen?|fußspitzen?|spitzen?)$/);
+  // nur in der Einzahl ("Linke Hacke, Fußspitze …") meint es einen Fuß
+  const single = po && !/beide|n$/.test(t);
+  return { ...mv, type: 'unknown', dir: po ? null : dir, bare, partOnly: po ? (/spitze/.test(po[1]) ? 'toe' : 'heel') : null, foot: po ? foot : undefined, single };
 }
 
 // Trennt an `sep`, aber nicht innerhalb von Klammern.
@@ -192,7 +201,12 @@ export function mergeUnits(units) {
     const m = u.moves[0];
     if (m.partOnly) {
       const swivel = out.slice(i + 1).map((x) => x.moves[0]).find((x) => x.type === 'swivel');
-      if (swivel) u.moves[0] = { ...swivel, part: m.partOnly, both: true };
+      if (!swivel) return;
+      // "Linke Hacke, Fußspitze und wieder Hacke zum rechten Fuß drehen": ein Fuß, in der ganzen Folge derselbe
+      const named = out.slice(0, i + 1).map((x) => x.moves[0]).findLast((x) => x.foot && (x.partOnly || x.type === 'swivel'))?.foot;
+      const one = m.single || swivel.toward;
+      if (one && named && swivel.toward) swivel.foot = named;
+      u.moves[0] = one ? { ...swivel, part: m.partOnly, both: false, foot: named || swivel.foot } : { ...swivel, part: m.partOnly, both: true };
       return;
     }
     if (!m.bare) return;

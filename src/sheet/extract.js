@@ -122,11 +122,21 @@ export function extractFromText(text) {
     .flatMap((l) => (gluedRow.test(l) ? l.replace(nextRow, '\n').split('\n') : [l]))
     // "7-82 Schritte nach vorn": Zählzeiten "7-8" kleben an "2 Schritte" – trennen, wenn das einen gültigen Bereich ergibt
     .map((l) => l.replace(/^((?:&\s?)?(?:\d{1,2}[&\-–])*?(\d{1,2})[\-–](\d))(?=\d\s+\p{L})/u, (m, label, from, to) => (+to > +from ? `${label} ` : m)))
-    .filter(Boolean);
+    .filter(Boolean)
+    // Seitenelemente von Copperknob, die beim Kopieren mitkommen
+    .filter((l) => !/^\(\d+ votes?\)|^buy from amazon|login or register/i.test(l));
+  // Copperknob-Kopf mit Stichwort und Wert in getrennten Zeilen ("Count:" / "32"); davor klebt teils die Menüleiste
+  const HEAD = /^(?:.*?(?=Count:$))?(Count|Walls?|Level|Choreographer|Music)\s*:$/i;
+  for (let i = 0; i < lines.length - 1; i++) {
+    const h = lines[i].match(HEAD);
+    if (!h) continue;
+    const value = HEAD.test(lines[i + 1]) ? [] : lines.splice(i + 1, 1);
+    lines[i] = [`${h[1]}:`, ...value].join(' ');
+  }
   for (const [i, line] of lines.entries()) {
     const meta = line.match(/^(Choreograph?ie|Choreographer|Choreographed by|Beschreibung|Musik|Music|Hinweis)\s*:?\s*(.*)$/i);
     if (meta && (line.includes(':') || /by/i.test(meta[1]))) {
-      setMeta(sheet, meta[1].replace(/^music$/i, 'Musik'), meta[2]);
+      setMeta(sheet, meta[1].replace(/^music$/i, 'Musik'), meta[2].replace(/\s*:?\s*\(iTunes\)\s*$/i, ''));
       continue;
     }
     // Copperknob-Kopf: "Count: 32  Wall: 4  Level: Beginner"

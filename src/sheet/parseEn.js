@@ -3,6 +3,7 @@
 // Liefert dieselben Einheiten/Moves wie der deutsche Parser in parse.js.
 
 import { mergeUnits } from './parse.js';
+import { parseCounts } from './counts.js';
 
 const FOOT = '(right|left|[rl])f?';
 const code = (s) => (s[0].toLowerCase() === 'r' ? 'R' : 'L');
@@ -46,11 +47,11 @@ function dirOf(t, foot) {
   if (/\b(forward|front)\b/.test(t)) fwd = 1;
   if (/\b(back|backward|backwards)\b/.test(t)) fwd = -1;
   const m =
-    t.match(/\bto\s+(?:the\s+|your\s+)?(right|left|[rl])\b/) ||
+    t.match(/\b(?:to|towards?)\s+(?:the\s+|your\s+)?(right|left|[rl])\b/) ||
     t.match(/\b(right|left|[rl])\s+(?:side|diagonal)\b/) ||
     t.match(/\b(?:side|diagonal(?:ly)?)\s+(?:to\s+)?(?:the\s+)?(right|left|[rl])\b(?!\s*(?:foot|heel|toe|knee))/);
   if (m) side = code(m[1]) === 'R' ? 1 : -1;
-  else if (/\b(side|out)\b/.test(t) && foot) side = foot === 'R' ? 1 : -1;
+  else if (/\b(side|out)\b|diagonal/.test(t) && foot) side = foot === 'R' ? 1 : -1; // "stomp R diagonally fwd"
   if (/diagonal/.test(t) && !fwd) fwd = 1;
   if (side && fwd) {
     side *= 0.75;
@@ -60,7 +61,7 @@ function dirOf(t, foot) {
 }
 
 export function parsePartEn(src) {
-  let t = src.toLowerCase().replace(/\bfwd\b/g, 'forward').replace(/\s+/g, ' ').trim();
+  let t = src.toLowerCase().replace(/\bfwd\b\.?/g, 'forward').replace(/\s+/g, ' ').trim();
   const mv = {};
   const pivot = /\bpivot/.test(t);
   const a = t.match(TURN_A);
@@ -219,15 +220,52 @@ function build(clauses, feet) {
   return units;
 }
 
+// Zählzeiten in Klammern vor den Bewegungen, wie bei neueren Copperknob-Blättern:
+// "(1) Stomp R diagonally fwd., (2-3-4) swivel L - heel, toes, heel towards R"
+const MARK = /\(\s*((?:&\s*)?\d{1,2}(?:\s*[-–&,]\s*\d{0,2})*&?|&)\s*\)/g;
+
+// "swivel L - heel, toes, heel towards R": eine Drehung pro genanntem Fußteil, der Fuß wandert dabei zur Seite
+function swivelList(text) {
+  const m = text.toLowerCase().match(new RegExp(`^(?:swivel|twist|fan)s?\\s+(?:${FOOT}\\b)?\\s*[-–:]?\\s*((?:heels?|toes?)(?:\\s*,\\s*(?:heels?|toes?))+)\\b(.*)$`));
+  if (!m) return null;
+  const foot = m[1] ? code(m[1]) : null;
+  const dir = dirOf(m[3], foot);
+  return m[2].split(/\s*,\s*/).map((part) => ({
+    moves: [{ type: 'swivel', foot, dir, part: part.startsWith('toe') ? 'toe' : 'heel', mode: 'side', both: !foot }],
+    raw: `${part}${m[3]}`,
+  }));
+}
+
 // Ganzer Zeilentext → Einheiten. nSlots = Anzahl der Zählzeiten der Zeile.
 export function parseUnitsEn(source, nSlots) {
   let text = source;
   let clock = null;
-  let feet = null;
   text = text.replace(/[([]\s*(\d{1,2})[:.](\d{2})\s*[)\]]|[([]?\s*(\d{1,2})\s*o'?clock\s*[)\]]?/gi, (m, h1, m1, h2) => {
     clock = (+(h1 ?? h2) % 12) * 30 + +(m1 ?? 0) / 2;
     return '';
   });
+  // Blickrichtung ohne Klammern am Zeilenende: "… cross L over R 9.00"
+  text = text.replace(/\s(\d{1,2})[:.](00|30)\s*$/, (m, h, min) => {
+    clock = (+h % 12) * 30 + +min / 2;
+    return '';
+  });
+  const marks = [...text.matchAll(MARK)];
+  let units;
+  if (marks.length && !text.slice(0, marks[0].index).trim()) {
+    units = marks.flatMap((m, i) => {
+      const part = text.slice(m.index + m[0].length, marks[i + 1]?.index).replace(/[\s,;.]+$/, '');
+      return parseBody(part, parseCounts(m[1]).length);
+    });
+  } else {
+    units = parseBody(text, nSlots);
+  }
+  if (clock !== null && units.length) units.at(-1).clock = clock;
+  return units;
+}
+
+function parseBody(source, nSlots) {
+  let text = source.replace(/\.(?=\s*(?:,|$))/g, ''); // "back on R., touch …"
+  let feet = null;
   // Fußfolge am Ende: "… stepping on R, L, R, L" / "(R-L-R)"
   text = text.replace(/(?:\bstepping\s+(?:on\s+)?|\bon\s+)?\(?\b((?:right|left|[rl])(?:\s*[,\-–]\s*(?:right|left|[rl])\b){1,7})\)?\s*$/i, (m, list) => {
     feet = list.match(/right|left|[rl]/gi).map(code);
@@ -237,6 +275,8 @@ export function parseUnitsEn(source, nSlots) {
   // "Vine R: step R to side, cross L behind, …" – der Name ist nur Überschrift der ausgeschriebenen Schritte
   text = text.replace(/^[^:,]{1,30}:\s*(?=\S)/, '');
   if (!text) return [];
+  const swivels = swivelList(text);
+  if (swivels) return swivels;
 
   // Erst nur an Kommas trennen; passt die Anzahl nicht zu den Zählzeiten, auch an "and"/"then".
   const splitters = [/\s*[,;]\s*|\s+[-–]\s+/, /\s*[,;]\s*|\s+[-–]\s+|\s+(?:and|then|&)\s+/i];
@@ -258,6 +298,5 @@ export function parseUnitsEn(source, nSlots) {
   if (tail?.vine && units.length === nSlots - 1) {
     units.push({ moves: [{ type: 'touch', foot: tail.vine, part: 'toe', beside: true }], raw: 'touch' });
   }
-  if (clock !== null && units.length) units.at(-1).clock = clock;
   return units;
 }
