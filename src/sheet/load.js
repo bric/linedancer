@@ -8,6 +8,9 @@ export function toProxyUrl(input) {
   } catch {
     throw new Error('Das ist keine gültige Adresse.');
   }
+  if (/(^|\.)copperknob\.co\.uk$/i.test(u.hostname)) {
+    throw new Error('Copperknob lässt keinen automatischen Abruf zu. Bitte die Seite im Browser öffnen, den Schritt-Text markieren und kopieren und über „Text einfügen“ laden.');
+  }
   if (!/(^|\.)get-in-line\.de$/i.test(u.hostname) || !u.pathname.startsWith('/dances/')) {
     throw new Error('Es werden nur Adressen unter https://www.get-in-line.de/dances/ unterstützt. Andere Beschreibungen bitte über „Text einfügen“ laden.');
   }

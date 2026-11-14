@@ -74,7 +74,7 @@ function applyMove(s, m) {
     Object.assign(ft, { x: ft.gx, z: ft.gz, y: 0, pitch: 0 });
     s.weight = foot;
   };
-  const footBased = !['hold', 'clap', 'arm', 'hips', 'swivel', 'unknown', 'pivot', 'turn'].includes(m.type);
+  const footBased = !['hold', 'clap', 'arm', 'hips', 'swivel', 'bounce', 'unknown', 'pivot', 'turn'].includes(m.type);
   if (m.turn && footBased) base.rot = th; // Standbein dreht auf dem Ballen mit
 
   switch (m.type) {
@@ -86,8 +86,12 @@ function applyMove(s, m) {
         // relativ zum Standbein – oder vom eigenen Platz aus, wenn das weiter trägt (z. B. Pony Steps)
         const a = add(home(), v);
         const b = add([self.gx, self.gz], v);
-        const prog = (p) => p[0] * v[0] + p[1] * v[1];
-        place(prog(b) > prog(a) + 1e-9 ? b : a);
+        // Der Platz relativ zum Standbein gilt, solange der Fuß dafür überhaupt wandert;
+        // sonst (gleicher Fuß tritt erneut) vom eigenen Platz aus weitersetzen.
+        // Gemessen wird ab der aktuellen Fußposition – nach Scuff/Kick hängt der Fuß in der Luft
+        // und darf wieder auf seinem alten Platz landen.
+        const moved = Math.hypot(a[0] - self.x, a[1] - self.z);
+        place(moved < 0.5 * Math.hypot(v[0], v[1]) ? b : a);
       }
       takeWeight(f);
       if (m.jump) s.fx.jump = true;
@@ -110,7 +114,7 @@ function applyMove(s, m) {
       break;
     case 'stomp':
       place(m.dir && !m.beside ? add(home(), dv(0.3)) : home());
-      takeWeight(f);
+      if (!m.noWeight) takeWeight(f);
       s.fx.stomp = f;
       break;
     case 'touch': {
@@ -134,6 +138,18 @@ function applyMove(s, m) {
     case 'scuff':
       place(add(home(), m.dir ? dv(0.32) : [F[0] * 0.32, F[1] * 0.32]), { y: 0.06, pitch: -0.25, ground: false });
       break;
+    case 'bounce': {
+      // Hacken heben und senken auf einer Zählzeit, ggf. mit Drehung auf den Ballen
+      const feet = m.both || !m.foot ? ['L', 'R'] : [m.foot];
+      if (m.turn) {
+        s.feet.L.rot = th;
+        s.feet.R.rot = th;
+      }
+      for (const ft of feet) Object.assign(s.feet[ft], { y: 0, pitch: 0 });
+      s.fx.bounce = feet;
+      if (m.weightEnd) takeWeight(m.weightEnd);
+      break;
+    }
     case 'heelUp':
       Object.assign(self, { y: 0.06, pitch: 0.5 });
       break;
@@ -317,7 +333,7 @@ function buildMain(sheet) {
 }
 
 function buildExtra(extra, xi) {
-  const start = initialState(clockToDeg(extra.note) ?? 0);
+  const start = initialState(clockToDeg(`${extra.note} ${extra.summary}`) ?? 0);
   const run = runSections([{ title: extra.title, rows: extra.rows }], `x${xi}`, start, 0, { snap: false, round: 0 });
   for (const mm of run.mismatches) {
     mm.row.warnings.push(`Laut Text steht man hier auf ${fmtClock(mm.expected)}, die Drehungen ergeben aber ${fmtClock(mm.got)}.`);

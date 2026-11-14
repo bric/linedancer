@@ -52,7 +52,12 @@ function blend(A, B, p) {
       x += R[0] * sgn(f) * 0.2 * arc;
       z += R[1] * sgn(f) * 0.2 * arc;
     }
-    feet[f] = { x, z, y, rot: lerp(a.rot, b.rot, e), pitch: lerp(a.pitch, b.pitch, e) };
+    let pitch = lerp(a.pitch, b.pitch, e);
+    if (fx.bounce?.includes(f)) {
+      y += 0.05 * arc;
+      pitch += 0.45 * arc;
+    }
+    feet[f] = { x, z, y, rot: lerp(a.rot, b.rot, e), pitch };
   }
   const ha = handsOf(A);
   const hb = handsOf(B);

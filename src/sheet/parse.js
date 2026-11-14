@@ -4,6 +4,7 @@
 // Ein Move = { type, foot?, dir?, size?, turn?, ... } (siehe parsePart).
 
 import { parseCounts } from './counts.js';
+import { isEnglish, parseUnitsEn } from './parseEn.js';
 
 const FRAC = {
   '¼': 0.25, '½': 0.5, '¾': 0.75, '⅛': 0.125, '⅜': 0.375, '⅝': 0.625, '⅞': 0.875,
@@ -14,9 +15,14 @@ const TURN_RE = /(¼|½|¾|⅛|⅜|⅝|⅞|\d\s*\/\s*\d|volle|ganze)\s*drehung\s
 const CLOCK_RE = /\(\s*(?:(\d{1,2})(?::(\d{2}))?\s*Uhr|(\d{1,2}):(\d{2}))\s*\)/i;
 
 // "(nach Ende der 7. Runde - 6 Uhr)" → 180
+// Auch englisch: "facing 6:00", "9 o'clock", "facing the back wall"
 export function clockToDeg(text) {
-  const m = String(text).match(/(\d{1,2})(?::(\d{2}))?\s*Uhr/i);
-  return m ? (+m[1] % 12) * 30 + (m[2] ? +m[2] / 2 : 0) : null;
+  const s = String(text);
+  const m = s.match(/(\d{1,2})(?::(\d{2}))?\s*Uhr/i) || s.match(/\b(\d{1,2})[:.](\d{2})\b/) || s.match(/\b(\d{1,2})()\s*o'?clock/i);
+  if (m) return (+m[1] % 12) * 30 + (m[2] ? +m[2] / 2 : 0);
+  if (/\bback wall\b/i.test(s)) return 180;
+  if (/\bfront wall\b/i.test(s)) return 0;
+  return null;
 }
 
 function footOf(t) {
@@ -59,6 +65,9 @@ export function parsePart(src) {
   if (tm) {
     mv.turn = { frac: FRAC[tm[1].replace(/\s/g, '')] ?? 0.25, dir: tm[2] === 'rechts' ? 'R' : 'L' };
     t = t.replace(TURN_RE, '').trim();
+    // "…, dabei eine ½ Drehung links herum": die Drehung verteilt sich auf die Bewegung davor
+    if (/^dabei\b/.test(t) && /^(?:(?:dabei|insgesamt|eine[rn]?)\s*)+$/.test(t)) return { type: 'modPrev', patch: { turn: mv.turn } };
+    t = t.replace(/^eine[rn]?\s+|\s+eine[rn]?$/, '').trim();
     if (!t) return { ...mv, type: 'turn' };
     if (/ballen/.test(t)) return { ...mv, type: 'pivot' };
   }
@@ -84,6 +93,7 @@ export function parsePart(src) {
   }
   if (/\b(fuß|bein)\b.*anheben/.test(t)) return out('hook', { behind: /hinter/.test(t) });
   if (/heranziehen/.test(t)) return out('touch', { part: 'flat', beside: true });
+  if (/hacken?\b.*bounce/.test(t)) return out('bounce', { both: /beide|hacken/.test(t) });
   if (/hacken?\b.*heben/.test(t)) return out('heelUp');
   if (/senken/.test(t)) return out('heelDown');
   if (/tippen/.test(t)) {
@@ -138,7 +148,7 @@ function splitOutsideParens(text, sep) {
 
 // Drehungen und "im Kreis schwingen" gehören zur folgenden Bewegung,
 // "Gewicht am Ende links" u. ä. zur vorherigen.
-function mergeUnits(units) {
+export function mergeUnits(units) {
   const out = [];
   let pend = null;
   for (const u of units) {
@@ -209,6 +219,10 @@ function parseSegment(seg) {
     .trim();
   if (!text) return [];
 
+  // "Hacken 3x heben und senken": pro Zählzeit ein ganzer Bounce statt heben/senken auf zwei Zählzeiten
+  const times = text.match(/\b([2-8])\s?x\b/i);
+  if (times) text = text.replace(/heben und (?:wieder )?senken/i, 'bounce');
+
   let units = [];
   const multi = text.match(/^(\d+)\s+(.*?)schritte\b(.*)$/i);
   if (multi && +multi[1] >= 2 && +multi[1] <= 8) {
@@ -224,8 +238,16 @@ function parseSegment(seg) {
     }
     units = mergeUnits(units);
     // "Rechte Hacke vorn 2x auftippen"
-    const times = text.match(/\b([2-8])\s?x\b/i);
-    if (times && units.length === 1) units = Array.from({ length: +times[1] }, () => ({ ...units[0] }));
+    if (times && units.length === 1) {
+      const n = +times[1];
+      const [first, ...rest] = units[0].moves;
+      units = Array.from({ length: n }, (_, i) => {
+        const m = { ...first };
+        if (m.turn) m.turn = { ...m.turn, frac: m.turn.frac / n }; // Drehung gleichmäßig verteilen
+        if (i < n - 1) delete m.weightEnd;
+        return { ...units[0], moves: [m, ...rest] };
+      });
+    }
   }
   if (clock !== null && units.length) units.at(-1).clock = clock;
   return units;
@@ -234,7 +256,9 @@ function parseSegment(seg) {
 // Zeile { counts, text } → { actions[], uncertain, unknown }
 export function parseRow(row, after = null) {
   const slots = parseCounts(row.counts, after);
-  const units = splitOutsideParens(row.text, /^\s+[-–]\s+/).flatMap(parseSegment);
+  const units = isEnglish(row.text)
+    ? parseUnitsEn(row.text, slots.length)
+    : splitOutsideParens(row.text, /^\s+[-–]\s+/).flatMap(parseSegment);
   const actions = slots.map((s) => ({ ...s, moves: [], raw: '', clock: null }));
   const uncertain = units.length !== slots.length;
   const put = (action, u) => {
@@ -277,7 +301,7 @@ export function resolveReferences(sections) {
     sec.rows.forEach((row, ri) => {
       const own = row.parsed.actions;
       if (!own.length) return;
-      const range = row.text.match(/^wie\s+(\d+)\s*[-–]\s*(\d+)/i);
+      const range = row.text.match(/^(?:wie|repeat(?:\s+counts?)?|as(?:\s+counts?)?)\s+(\d+)\s*[-–]\s*(\d+)/i);
       let source = null;
       let from = 0;
       if (range) {
@@ -291,7 +315,7 @@ export function resolveReferences(sections) {
       if (!source?.length) return;
       const span = (list) => Math.floor(list.at(-1).beat) - Math.floor(list[0].beat);
       if (span(source) !== span(own)) return;
-      const mirror = /spiegel|seitenverkehrt/i.test(row.text);
+      const mirror = /spiegel|seitenverkehrt|mirror|opposite/i.test(row.text);
       const offset = Math.floor(own[0].beat) - from;
       row.parsed = {
         actions: source.map((a) => ({ ...a, beat: a.beat + offset, moves: mirror ? a.moves.map(mirrorMove) : a.moves })),

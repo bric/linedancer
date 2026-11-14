@@ -84,6 +84,38 @@ describe('parse', () => {
     expect(s[3].state.feet.R.x).toBeLessThan(s[3].state.feet.L.x);
     expect(s[3].state.weight).toBe('L');
   });
+  it('brings the trailing foot level after a diagonal step', () => {
+    const s = buildChoreo(extractSheet('T\n1-2 Schritt nach schräg rechts vorn mit rechts - Halten\n3-4 Kleinen Schritt nach links mit links - Halten')).main.events;
+    const start = s[0].state.feet.L;
+    const { L, R } = s[2].state.feet;
+    expect(L.z).toBeCloseTo(R.z); // auf gleicher Höhe wie der rechte Fuß
+    expect(L.z).toBeLessThan(start.z - 0.25); // also deutlich nach vorn gewandert
+    expect(L.x).toBeLessThan(R.x - 0.3); // und links vom rechten Fuß
+    expect(s[2].state.weight).toBe('L');
+  });
+  it('steps back normally after a scuff', () => {
+    const s = buildChoreo(extractSheet('T\n1-2 Schritt nach vorn mit rechts - Linken Fuß nach vorn schwingen, Hacke am Boden schleifen lassen\n3-4 Schritt nach vorn mit links - Rechten Fuß nach vorn schwingen, Hacke am Boden schleifen lassen\n5-8 4 Schritte nach hinten (r - l - r - l)')).main.events;
+    const gap = (i) => s[i].state.feet.R.gz - s[i].state.feet.L.gz; // > 0: rechts steht weiter hinten
+    expect(gap(4)).toBeCloseTo(0.42); // erster Rückwärtsschritt: eine normale Schrittlänge hinter links
+    expect(gap(5)).toBeCloseTo(-0.42);
+    expect(gap(6)).toBeCloseTo(0.42);
+    expect(gap(7)).toBeCloseTo(-0.42);
+  });
+  it('spreads a turn over repeated heel bounces', () => {
+    const row = { counts: '5-8', text: 'Schritt nach vorn mit rechts - Beide Hacken 3x heben und senken, dabei eine ½ Drehung links herum, Gewicht am Ende links (6 Uhr)' };
+    const a = parseRow(row);
+    expect(a.unknown || a.uncertain).toBe(false);
+    expect(a.actions.map((x) => x.moves[0].type)).toEqual(['step', 'bounce', 'bounce', 'bounce']);
+    expect(a.actions.slice(1).map((x) => x.moves[0].turn.frac)).toEqual([1 / 6, 1 / 6, 1 / 6]);
+    expect(a.actions.map((x) => x.moves[0].weightEnd)).toEqual([undefined, undefined, undefined, 'L']);
+    const ev = buildChoreo(extractSheet(`T\n${row.counts} ${row.text}`)).main.events.filter((e) => e.round === 0);
+    expect(ev.map((e) => Math.round(mod360(e.state.theta)))).toEqual([0, 300, 240, 180]);
+    expect(ev.map((e) => e.state.weight)).toEqual(['R', 'R', 'R', 'L']);
+    expect(ev[3].state.feet.R.rot).toBeCloseTo(ev[3].state.theta);
+    expect(ev[2].state.fx.bounce).toEqual(['L', 'R']);
+    // weiterhin: heben und senken auf zwei Zählzeiten, wenn kein "3x" dabeisteht
+    expect(types('5&6', 'Rechten Fuß flach neben linkem auftippen - Rechte Hacke heben und senken')).toEqual(['touchR', 'heelUpR', 'heelDownR']);
+  });
   it('keeps turns and clocks', () => {
     const a = parseRow({ counts: '7-8', text: 'Rechten Fuß über linken kreuzen - ¼ Drehung rechts herum und Schritt nach hinten mit links (3 Uhr)' }).actions;
     expect(a[1].moves[0]).toMatchObject({ type: 'step', foot: 'L', turn: { frac: 0.25, dir: 'R' }, dir: { side: 0, fwd: -1 } });
@@ -98,6 +130,63 @@ describe('parse', () => {
         expect(p.uncertain, row.text).toBe(false);
       }
     }
+  });
+});
+
+describe('english sheets', () => {
+  const text = readFileSync(new URL('./fixtures/english-sample.txt', import.meta.url), 'utf8');
+  const sheet = extractSheet(text);
+  const choreo = buildChoreo(sheet);
+  const types = (counts, t) => parseRow({ counts, text: t }).actions.map((a) => a.moves.map((m) => m.type + (m.foot || '')).join('+'));
+
+  it('reads Copperknob-style text with counts glued to the description', () => {
+    expect(sheet.title).toBe('');
+    expect(sheet.hint).toBe('32-count intro');
+    expect(sheet.sections.map((s) => s.rows.length)).toEqual([4, 3, 4, 4]);
+    expect(sheet.sections[0].title).toMatch(/^CHASSE R/);
+    expect(sheet.sections[0].rows[0]).toEqual({ counts: '1&2', text: 'Step to R on R foot, step on L foot beside R, step to R on R foot', parsed: expect.anything(), warnings: [] });
+    expect(sheet.extras).toHaveLength(1);
+    expect(sheet.extras[0].rows).toHaveLength(2);
+  });
+  it('recognises every row', () => {
+    for (const r of [...sheet.sections, ...sheet.extras].flatMap((s) => s.rows)) expect(r.warnings, r.text).toEqual([]);
+  });
+  it('maps the vocabulary', () => {
+    expect(types('1&2', 'Step to R on R foot, step on L foot beside R, step to R on R foot')).toEqual(['stepR', 'togetherL', 'stepR']);
+    expect(types('3-4', 'Rock back on L foot, recover weight onto R')).toEqual(['stepL', 'recoverR']);
+    expect(types('1-2', 'Step forward on R foot, kick L foot forward')).toEqual(['stepR', 'kickL']);
+    expect(types('5-6', 'Fan R heel out to R, bring R heel back to centre')).toEqual(['swivelR', 'swivelR']);
+    expect(types('1-2', 'Step forward on R, pivot ½ L')).toEqual(['stepR', 'pivot']);
+    expect(types('1-2', 'Cross R over L, step L back')).toEqual(['crossR', 'stepL']);
+    expect(types('1-2', 'Step R forward and touch L beside R')).toEqual(['stepR', 'touchL']);
+    expect(types('1&2', 'Shuffle forward R-L-R')).toEqual(['stepR', 'togetherL', 'stepR']);
+    expect(types('3&4', 'L coaster step')).toEqual(['stepL', 'togetherR', 'stepL']);
+    expect(types('7-8', 'Stomp R beside L, hold')).toEqual(['stompR', 'hold']);
+  });
+  it('walks around a ¾ turn and comes out on 9 o’clock', () => {
+    const a = sheet.sections[1].rows[2].parsed.actions;
+    expect(a.map((x) => x.moves[0].foot)).toEqual(['R', 'L', 'R', 'L']);
+    expect(a.every((x) => x.moves[0].turn.frac === 0.1875)).toBe(true);
+    expect(a[3].clock).toBe(270);
+    expect(choreo.main.roundLen).toBe(32);
+    expect(choreo.main.rounds).toBe(4);
+    expect(mod360(choreo.main.events.filter((e) => e.round === 0).at(-1).state.theta)).toBe(270);
+  });
+  it('keeps the V-step feet level and returns to centre', () => {
+    const ev = choreo.main.events.filter((e) => e.round === 0 && e.section === 3);
+    // Blick 9 Uhr: vorn = -x, rechts = -z
+    const { L, R } = ev[1].state.feet;
+    expect(L.x).toBeCloseTo(R.x);
+    expect(Math.abs(L.z - R.z)).toBeGreaterThan(0.4);
+    const end = ev[3].state.feet;
+    expect(Math.hypot(end.L.x - end.R.x, end.L.z - end.R.z)).toBeCloseTo(0.24);
+  });
+  it('starts the tag facing the back wall', () => {
+    expect(mod360(choreo.extras[0].initial.theta)).toBe(180);
+    expect(mod360(choreo.extras[0].events.at(-1).state.theta)).toBe(270);
+  });
+  it('still treats German rows as German', () => {
+    expect(types('1-2', 'Schritt nach vorn mit rechts - Linken Fuß an rechten heransetzen')).toEqual(['stepR', 'togetherL']);
   });
 });
 
@@ -171,5 +260,6 @@ describe('load', () => {
   it('maps get-in-line URLs to the proxy', () => {
     expect(toProxyUrl('https://www.get-in-line.de/dances/My%20Mama%20Said_-_Glover.htm')).toBe('/sheet/My%20Mama%20Said_-_Glover.htm');
     expect(() => toProxyUrl('https://example.com/dances/x.htm')).toThrow();
+    expect(() => toProxyUrl('https://www.copperknob.co.uk/stepsheets/YTPDD72/ziggy')).toThrow(/Text einfügen/);
   });
 });
