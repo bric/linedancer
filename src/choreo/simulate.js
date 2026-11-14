@@ -7,6 +7,7 @@ import { parseRow, resolveReferences, clockToDeg } from '../sheet/parse.js';
 
 export const STANCE = 0.24; // Abstand der Füße im Stand
 export const STEP = 0.42; // normale Schrittlänge
+const BALL = 0.14; // Abstand Knöchel → Fußballen
 
 export const other = (f) => (f === 'L' ? 'R' : 'L');
 export const sgn = (f) => (f === 'R' ? 1 : -1);
@@ -172,8 +173,18 @@ function applyMove(s, m) {
       // Fußspitzen bzw. Hacken auf der Stelle drehen
       const k = m.part === 'toe' ? 1 : -1;
       for (const ft of m.both || !m.foot ? ['L', 'R'] : [m.foot]) {
-        const delta = m.mode === 'centre' ? 0 : m.mode === 'apart' ? sgn(ft) * k * 35 : Math.sign(d.side) * k * 35;
-        s.feet[ft].rot = th + delta;
+        // 'apart' = nach außen, 'in' = nach innen, 'side' = beide in die genannte Richtung (ohne Angabe: nach außen)
+        const way = m.mode === 'apart' ? sgn(ft) : m.mode === 'in' ? -sgn(ft) : Math.sign(d.side) || sgn(ft);
+        const delta = m.mode === 'centre' ? 0 : way * k * 35;
+        const foot = s.feet[ft];
+        foot.rot = th + delta;
+        // Hacken-Swivel dreht um den Fußballen: der Ballen bleibt stehen, Knöchel und Hacke schwenken aus.
+        // (Spitzen-Swivel dreht um die Hacke, die praktisch unter dem Knöchel liegt.)
+        const ball = m.part === 'heel' ? BALL : 0;
+        const a = fwdV(th);
+        const b = fwdV(foot.rot);
+        foot.x = foot.gx + (a[0] - b[0]) * ball;
+        foot.z = foot.gz + (a[1] - b[1]) * ball;
       }
       break;
     }

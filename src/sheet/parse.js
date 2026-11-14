@@ -4,14 +4,14 @@
 // Ein Move = { type, foot?, dir?, size?, turn?, ... } (siehe parsePart).
 
 import { parseCounts } from './counts.js';
-import { isEnglish, parseUnitsEn } from './parseEn.js';
+import { isEnglish, isNamedFigure, germanToEnglish, parseUnitsEn } from './parseEn.js';
 
 const FRAC = {
   '¼': 0.25, '½': 0.5, '¾': 0.75, '⅛': 0.125, '⅜': 0.375, '⅝': 0.625, '⅞': 0.875,
   '1/4': 0.25, '1/2': 0.5, '3/4': 0.75, '1/8': 0.125, '3/8': 0.375, '5/8': 0.625, '7/8': 0.875,
   volle: 1, ganze: 1,
 };
-const TURN_RE = /(¼|½|¾|⅛|⅜|⅝|⅞|\d\s*\/\s*\d|volle|ganze)\s*drehung\s+(?:nach\s+)?(rechts|links)(?:\s*herum)?/;
+const TURN_RE = /(¼|½|¾|⅛|⅜|⅝|⅞|\d\s*\/\s*\d|volle|ganze)\s*(?:drehung|kreis|bogen)\s+(?:nach\s+)?(rechts|links)(?:\s*herum)?/;
 const CLOCK_RE = /\(\s*(?:(\d{1,2})(?::(\d{2}))?\s*Uhr|(\d{1,2}):(\d{2}))\s*\)/i;
 
 // "(nach Ende der 7. Runde - 6 Uhr)" → 180
@@ -64,7 +64,8 @@ export function parsePart(src) {
   const tm = t.match(TURN_RE);
   if (tm) {
     mv.turn = { frac: FRAC[tm[1].replace(/\s/g, '')] ?? 0.25, dir: tm[2] === 'rechts' ? 'R' : 'L' };
-    t = t.replace(TURN_RE, '').trim();
+    // "auf einem ¾ Kreis rechts herum": Rest der Wendung mit entfernen
+    t = t.replace(TURN_RE, '').replace(/\b(?:auf|in|mit) eine[mnr]?\s*(?=\s|$)/, '').replace(/\s+/g, ' ').trim();
     // "…, dabei eine ½ Drehung links herum": die Drehung verteilt sich auf die Bewegung davor
     if (/^dabei\b/.test(t) && /^(?:(?:dabei|insgesamt|eine[rn]?)\s*)+$/.test(t)) return { type: 'modPrev', patch: { turn: mv.turn } };
     t = t.replace(/^eine[rn]?\s+|\s+eine[rn]?$/, '').trim();
@@ -88,7 +89,7 @@ export function parsePart(src) {
   if (/knie\b.*(heben|hochziehen)/.test(t)) return out('hitch', { small: /wenig|leicht/.test(t) });
   if (/drehen/.test(t) && /spitze|hacke|ferse/.test(t)) {
     // Swivels: "Beide Hacken nach links drehen - … wieder zur Mitte drehen"
-    const mode = /mitte|zurück/.test(t) ? 'centre' : /auseinander/.test(t) ? 'apart' : 'side';
+    const mode = /mitte|zurück/.test(t) ? 'centre' : /auseinander|außen/.test(t) ? 'apart' : /innen|zusammen/.test(t) ? 'in' : 'side';
     return out('swivel', { part: /spitze/.test(t) ? 'toe' : 'heel', mode, both: /beide|hacken|spitzen/.test(t) });
   }
   if (/\b(fuß|bein)\b.*anheben/.test(t)) return out('hook', { behind: /hinter/.test(t) });
@@ -230,6 +231,11 @@ function parseSegment(seg) {
     for (let i = 0; i < +multi[1]; i++) {
       const mv = parsePart(`${multi[2]}schritt${multi[3]}`);
       if (feet) mv.foot = feet[i % feet.length];
+      // "4 Schritte auf einem ¾ Kreis": Drehung auf die Schritte verteilen
+      if (mv.turn) {
+        mv.turn = { ...mv.turn, frac: mv.turn.frac / +multi[1] };
+        mv.size = Math.min(mv.size ?? 1, 0.6);
+      }
       units.push({ moves: [mv], raw: text });
     }
   } else {
@@ -256,9 +262,12 @@ function parseSegment(seg) {
 // Zeile { counts, text } → { actions[], uncertain, unknown }
 export function parseRow(row, after = null) {
   const slots = parseCounts(row.counts, after);
-  const units = isEnglish(row.text)
-    ? parseUnitsEn(row.text, slots.length)
-    : splitOutsideParens(row.text, /^\s+[-–]\s+/).flatMap(parseSegment);
+  // Benannte Figuren zuerst: "Sailor Step links" sieht englisch aus, braucht aber die Übersetzung
+  const units = isNamedFigure(row.text)
+    ? parseUnitsEn(germanToEnglish(row.text), slots.length)
+    : isEnglish(row.text)
+      ? parseUnitsEn(row.text, slots.length)
+      : splitOutsideParens(row.text, /^\s+[-–]\s+/).flatMap(parseSegment);
   const actions = slots.map((s) => ({ ...s, moves: [], raw: '', clock: null }));
   const uncertain = units.length !== slots.length;
   const put = (action, u) => {

@@ -20,9 +20,25 @@ const TURN_A = new RegExp(`${PRE}${F}\\s*(?:turn|pivot)?\\s*(?:to|over)?\\s*(?:t
 // "turn left ¼"
 const TURN_B = new RegExp(`(?:turn|pivot)(?:ing)?\\s+(?:to\\s+)?(?:the\\s+)?(right|left|r|l)\\s+${F}(?:\\s+turn)?`);
 
-const ENGLISH = /\b(step|stepping|steps|touch|rock|recover|kick|point|walk|cross|stomp|hold|turn|pivot|shuffle|heels?|toes?|foot|forward|beside|weight|hitch|scuff|brush|fan|coaster|chasse|triple|clap)\b/i;
+const ENGLISH = /\b(step|stepping|steps|touch|rock|recover|kick|point|walk|cross|stomp|hold|turn|pivot|shuffle|heels?|toes?|foot|forward|beside|weight|hitch|scuff|brush|fan|coaster|chasse|triple|clap|vine|grapevine|sailor|jazz)\b/i;
 const GERMAN = /\b(schritt\w*|fuß\w*|mit|nach|drehung|gewicht|halten|hacken?|und|auftippen|kreuzen)\b/i;
 export const isEnglish = (text) => ENGLISH.test(text) && !GERMAN.test(text);
+
+// Benannte Figuren in sonst deutschen Zeilen ("Vine nach rechts", "Jazz Box mit ¼ Drehung rechts herum")
+const NAMED = /\b(grapevine|vine|sailor|jazz\s*(?:box|square))\b/i;
+export const isNamedFigure = (text) => NAMED.test(text) && !/schritt|kreuzen|fuß|heransetzen/i.test(text);
+export const germanToEnglish = (text) =>
+  text
+    .replace(/\brechts\b|\brechte[nrms]?\b/gi, 'right')
+    .replace(/\blinks\b|\blinke[nrms]?\b/gi, 'left')
+    .replace(/\bdrehung\b/gi, 'turn')
+    .replace(/\bherum\b/gi, '')
+    .replace(/\bnach\b/gi, 'to')
+    .replace(/\bmit\b/gi, 'with')
+    .replace(/\bund\b/gi, 'and')
+    .replace(/\bauftippen\b|\btipp(?:en)?\b/gi, 'touch')
+    .replace(/\bvorn\b|\bvorwärts\b/gi, 'forward')
+    .replace(/\bhinten\b|\bzurück\b/gi, 'back');
 
 function dirOf(t, foot) {
   let side = 0;
@@ -103,11 +119,56 @@ export function parsePartEn(src) {
 // Zusammengesetzte Schritte, die auf mehrere Zählzeiten verteilt werden.
 function compound(clause, feet) {
   const t = clause.toLowerCase();
+  const unit = (m) => ({ moves: [m], raw: clause });
+  const named = t.match(NAMED);
+  if (named) {
+    const turn = parsePartEn(clause).turn;
+    const bare = t.replace(turn ? /(?:¼|½|¾|⅛|\d\s*\/\s*\d|quarter|half).*$/ : /$^/, '');
+    const m = bare.match(new RegExp(`\\b${FOOT}\\b`));
+    const f = feet?.[0] || (m ? code(m[1]) : turn ? turn.dir : 'R');
+    const o = swap(f);
+    const s = f === 'R' ? 1 : -1;
+    const withTurn = (mv) => (turn ? { ...mv, turn } : mv);
+    if (/vine/.test(named[1])) {
+      // Seit, hinten kreuzen, Seit (ggf. mit Drehung nach vorn) – der Abschluss steht meist dahinter
+      const units = [
+        unit({ type: 'step', foot: f, dir: { side: s, fwd: 0 }, size: 1 }),
+        unit({ type: 'cross', foot: o, behind: true }),
+        unit(withTurn({ type: 'step', foot: f, dir: turn ? { side: 0, fwd: 1 } : { side: s, fwd: 0 }, size: 1 })),
+      ];
+      const end = t.match(/\b(touch|tap|scuff|brush|stomp|hitch|kick|together|close)\b/);
+      if (end) units.push({ ...unit(parsePartEn(`${end[1]} ${o} ${/touch|tap|stomp|together|close/.test(end[1]) ? 'beside' : 'forward'}`)), raw: end[1] });
+      else units.at(-1).vine = o;
+      return units;
+    }
+    if (/sailor/.test(named[1])) {
+      // hinten kreuzen, kleiner Schritt zur Seite, kleiner Schritt zur eigenen Seite
+      return [
+        unit(withTurn({ type: 'cross', foot: f, behind: true })),
+        unit({ type: 'step', foot: o, dir: { side: -s, fwd: 0 }, size: 0.5 }),
+        unit({ type: 'step', foot: f, dir: { side: s, fwd: 0 }, size: 0.5 }),
+      ];
+    }
+    // Jazz Box: kreuzen, zurück, Seit (ggf. mit Drehung), vor
+    const last = /\bcross\b/.test(t.replace(named[0], ''))
+      ? { type: 'cross', foot: o, behind: false }
+      : /\b(touch|tap)\b/.test(t)
+        ? { type: 'touch', foot: o, part: 'toe', beside: true }
+        : /\b(together|close|beside)\b/.test(t)
+          ? { type: 'together', foot: o }
+          : { type: 'step', foot: o, dir: { side: 0, fwd: 1 }, size: 0.6 };
+    return [
+      unit({ type: 'cross', foot: f, behind: false }),
+      unit({ type: 'step', foot: o, dir: { side: 0, fwd: -1 }, size: 0.7 }),
+      unit(withTurn({ type: 'step', foot: f, dir: { side: s, fwd: 0 }, size: 0.7 })),
+      // der Standard-Abschluss entfällt, wenn danach ein eigener genannt wird ("Jazz box R, touch")
+      { ...unit(last), optional: last.type === 'step' },
+    ];
+  }
   const base = parsePartEn(clause.replace(/\b(shuffle|chass[eé]|triple(\s+step)?|cha[- ]cha|coaster(\s+step)?)\b/gi, 'step'));
   if (base.type !== 'step' && base.type !== 'together') return null;
   const f = feet?.[0] || base.foot || (base.dir?.side < 0 ? 'L' : 'R');
   const o = swap(f);
-  const unit = (m) => ({ moves: [m], raw: clause });
   if (/\b(shuffle|chass[eé]|triple|cha[- ]cha)\b/.test(t)) {
     const step = { type: 'step', dir: base.dir, size: 0.7, inPlace: !base.dir };
     const first = { ...step, foot: f };
@@ -173,18 +234,29 @@ export function parseUnitsEn(source, nSlots) {
     return '';
   });
   text = text.replace(/\([^)]*\)|\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
+  // "Vine R: step R to side, cross L behind, …" – der Name ist nur Überschrift der ausgeschriebenen Schritte
+  text = text.replace(/^[^:,]{1,30}:\s*(?=\S)/, '');
   if (!text) return [];
 
   // Erst nur an Kommas trennen; passt die Anzahl nicht zu den Zählzeiten, auch an "and"/"then".
   const splitters = [/\s*[,;]\s*|\s+[-–]\s+/, /\s*[,;]\s*|\s+[-–]\s+|\s+(?:and|then|&)\s+/i];
   let units = null;
   for (const re of splitters) {
-    const candidate = build(text.split(re).filter(Boolean), feet);
+    let candidate = build(text.split(re).filter(Boolean), feet);
+    if (candidate.length === nSlots + 1) {
+      const i = candidate.findIndex((u, k) => u.optional && k < candidate.length - 1);
+      if (i >= 0) candidate = candidate.filter((_, k) => k !== i);
+    }
     if (!units) units = candidate;
     if (candidate.length === nSlots) {
       units = candidate;
       break;
     }
+  }
+  // "Vine R" auf vier Zählzeiten ohne genannten Abschluss: freien Fuß daneben auftippen
+  const tail = units.at(-1);
+  if (tail?.vine && units.length === nSlots - 1) {
+    units.push({ moves: [{ type: 'touch', foot: tail.vine, part: 'toe', beside: true }], raw: 'touch' });
   }
   if (clock !== null && units.length) units.at(-1).clock = clock;
   return units;

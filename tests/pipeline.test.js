@@ -116,6 +116,33 @@ describe('parse', () => {
     // weiterhin: heben und senken auf zwei Zählzeiten, wenn kein "3x" dabeisteht
     expect(types('5&6', 'Rechten Fuß flach neben linkem auftippen - Rechte Hacke heben und senken')).toEqual(['touchR', 'heelUpR', 'heelDownR']);
   });
+  it('walks a ¾ circle and fans single heels (Ziggy)', () => {
+    const run = (text) => buildChoreo(extractSheet(text)).main.events.filter((e) => e.round === 0);
+    const row = { counts: '5-8', text: '4 Schritte nach vorn auf einem ¾ Kreis rechts herum (r - l - r - l) (9 Uhr)' };
+    const a = parseRow(row);
+    expect(a.unknown || a.uncertain).toBe(false);
+    expect(a.actions.map((x) => x.moves[0].foot)).toEqual(['R', 'L', 'R', 'L']);
+    expect(a.actions.map((x) => x.moves[0].turn)).toEqual(Array(4).fill({ frac: 0.1875, dir: 'R' }));
+    expect(a.actions.map((x) => x.moves[0].dir)).toEqual(Array(4).fill({ side: 0, fwd: 1 }));
+    const circle = run(`T\n${row.counts} ${row.text}`);
+    expect(circle.map((e) => mod360(e.state.theta))).toEqual([67.5, 135, 202.5, 270]);
+    expect(buildChoreo(extractSheet(`T\n${row.counts} ${row.text}`)).main.rounds).toBe(4);
+
+    const fan = run('T\n5-6 Rechte Hacke nach außen drehen - Rechte Hacke wieder zurück drehen\n7-8 Linke Hacke nach außen drehen - Linke Hacke wieder zurück drehen');
+    const rot = (i, f) => fan[i].state.feet[f].rot;
+    expect([rot(0, 'R'), rot(0, 'L')]).toEqual([-35, 0]); // rechte Hacke nach rechts = Spitze nach links
+    expect(rot(1, 'R')).toBe(0);
+    expect([rot(2, 'L'), rot(2, 'R')]).toEqual([35, 0]);
+    expect(rot(3, 'L')).toBe(0);
+    // Der Ballen bleibt stehen, die Hacke (Knöchel) schwenkt nach außen – nicht die Fußspitze
+    const ballOf = (ft) => [ft.x + Math.sin((ft.rot * Math.PI) / 180) * 0.14, ft.z - Math.cos((ft.rot * Math.PI) / 180) * 0.14];
+    const [r0, r1, l2] = [fan[0].state.feet.R, fan[1].state.feet.R, fan[2].state.feet.L];
+    expect(ballOf(r0)[0]).toBeCloseTo(ballOf(r1)[0]);
+    expect(ballOf(r0)[1]).toBeCloseTo(ballOf(r1)[1]);
+    expect(r0.x - r1.x).toBeGreaterThan(0.07); // rechte Hacke nach rechts
+    expect(l2.x - fan[3].state.feet.L.x).toBeLessThan(-0.07); // linke Hacke nach links
+    expect([r1.x, r1.z]).toEqual([r1.gx, r1.gz]);
+  });
   it('keeps turns and clocks', () => {
     const a = parseRow({ counts: '7-8', text: 'Rechten Fuß über linken kreuzen - ¼ Drehung rechts herum und Schritt nach hinten mit links (3 Uhr)' }).actions;
     expect(a[1].moves[0]).toMatchObject({ type: 'step', foot: 'L', turn: { frac: 0.25, dir: 'R' }, dir: { side: 0, fwd: -1 } });
@@ -162,6 +189,37 @@ describe('english sheets', () => {
     expect(types('1&2', 'Shuffle forward R-L-R')).toEqual(['stepR', 'togetherL', 'stepR']);
     expect(types('3&4', 'L coaster step')).toEqual(['stepL', 'togetherR', 'stepL']);
     expect(types('7-8', 'Stomp R beside L, hold')).toEqual(['stompR', 'hold']);
+  });
+  it('expands vine, sailor step and jazz box', () => {
+    expect(types('1-4', 'Vine R')).toEqual(['stepR', 'crossL', 'stepR', 'touchL']);
+    expect(types('1-3', 'Grapevine to the left')).toEqual(['stepL', 'crossR', 'stepL']);
+    expect(types('1-4', 'Vine L, scuff R')).toEqual(['stepL', 'crossR', 'stepL', 'scuffR']);
+    expect(types('5-8', 'Vine L with ¼ turn L and brush')).toEqual(['stepL', 'crossR', 'stepL', 'scuffR']);
+    expect(types('3&4', 'R sailor step')).toEqual(['crossR', 'stepL', 'stepR']);
+    expect(types('5&6', 'Sailor step L, R, L')).toEqual(['crossL', 'stepR', 'stepL']);
+    expect(types('1-4', 'Jazz box R')).toEqual(['crossR', 'stepL', 'stepR', 'stepL']);
+    expect(types('5-8', 'Jazz box ¼ turn R, touch')).toEqual(['crossR', 'stepL', 'stepR', 'touch']);
+    expect(types('5-8', 'Jazz box R with touch')).toEqual(['crossR', 'stepL', 'stepR', 'touchL']);
+    expect(types('1-4', 'Vine R: step R to side, cross L behind R, step R to side, touch L beside R')).toEqual(['stepR', 'crossL', 'stepR', 'touchL']);
+    // auch in deutschen Zeilen
+    expect(types('1-4', 'Vine nach rechts')).toEqual(['stepR', 'crossL', 'stepR', 'touchL']);
+    expect(types('1-4', 'Jazz Box mit ¼ Drehung rechts herum')).toEqual(['crossR', 'stepL', 'stepR', 'stepL']);
+    expect(types('3&4', 'Sailor Step links')).toEqual(['crossL', 'stepR', 'stepL']);
+
+    const turnOf = (counts, t, i) => parseRow({ counts, text: t }).actions[i].moves[0].turn;
+    expect(turnOf('5-8', 'Vine L with ¼ turn L and brush', 2)).toEqual({ frac: 0.25, dir: 'L' });
+    expect(turnOf('5-8', 'Jazz box ¼ turn R, touch', 2)).toEqual({ frac: 0.25, dir: 'R' });
+
+    const run = (text) => buildChoreo(extractSheet(text)).main.events.filter((e) => e.round === 0);
+    const vine = run('T\n1-4 Vine R');
+    expect(vine[3].state.feet.R.gx - vine[0].state.feet.L.gx).toBeGreaterThan(0.7); // deutlich nach rechts gewandert
+    expect(vine[3].state.weight).toBe('R');
+    const jazz = run('T\n1-4 Jazz box ¼ turn R');
+    expect(mod360(jazz[3].state.theta)).toBe(90);
+    for (const e of [...vine, ...jazz, ...run('T\n1&2 R sailor step')]) {
+      const { L, R } = e.state.feet;
+      expect(Math.hypot(L.gx - R.gx, L.gz - R.gz)).toBeLessThan(0.95);
+    }
   });
   it('walks around a ¾ turn and comes out on 9 o’clock', () => {
     const a = sheet.sections[1].rows[2].parsed.actions;
