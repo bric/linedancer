@@ -114,7 +114,12 @@ function applyMove(s, m) {
       s.fx.stomp = f;
       break;
     case 'touch': {
-      const p = m.dir && !m.beside ? add(home(), dv(0.4)) : home(0.9);
+      const k = m.cross === 'behind' ? -0.2 : 0.2;
+      const p = m.cross
+        ? [base.gx - R[0] * sgn(f) * 0.07 + F[0] * k, base.gz - R[1] * sgn(f) * 0.07 + F[1] * k]
+        : m.dir && !m.beside
+          ? add(home(), dv(0.4))
+          : home(0.9);
       if (m.part === 'heel') place(p, { y: 0.02, pitch: -0.5 });
       else if (m.part === 'flat') place(p);
       else place(p, { y: 0.07, pitch: 0.7 });

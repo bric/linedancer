@@ -88,7 +88,9 @@ export function parsePart(src) {
   if (/senken/.test(t)) return out('heelDown');
   if (/tippen/.test(t)) {
     const part = /hacke|ferse/.test(t) ? 'heel' : /flach/.test(t) ? 'flat' : 'toe';
-    return out('touch', { part, beside: /neben/.test(t) });
+    // "hinter rechtem Fuß" / "vor linkem Fuß": gekreuzt hinter bzw. vor dem Standfuß
+    const cross = /\bhinter\b/.test(t) ? 'behind' : /\b(vor|über)\s+(?:de[mn]\s+)?(?:recht|link)/.test(t) ? 'front' : null;
+    return out('touch', { part, beside: /neben/.test(t), cross });
   }
   if (/aufstampfen|stampfen$/.test(t)) return out('stomp', { beside: /neben/.test(t) });
   if (/heransetzen|schließen/.test(t)) return out('together');

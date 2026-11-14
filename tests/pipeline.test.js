@@ -73,6 +73,17 @@ describe('parse', () => {
     expect(rows[2].parsed.actions[0].moves[0].dir.side).toBe(-1);
     expect(rows[2].parsed.unknown).toBe(false);
   });
+  it('touches behind the other foot', () => {
+    const a = parseRow({ counts: '1-2', text: 'Schritt nach rechts mit rechts - Linke Fußspitze hinter rechtem Fuß auftippen' }).actions;
+    expect(a[1].moves[0]).toMatchObject({ type: 'touch', foot: 'L', part: 'toe', cross: 'behind' });
+    const s = buildChoreo(extractSheet('T\n1-2 Schritt nach rechts mit rechts - Linke Fußspitze hinter rechtem Fuß auftippen\n3-4 Schritt nach links mit links - Rechte Fußspitze hinter linkem Fuß auftippen')).main.events;
+    // 12 Uhr = -z: "hinter" heißt größeres z; gekreuzt heißt auf der anderen Seite des Standfußes
+    expect(s[1].state.feet.L.z).toBeGreaterThan(s[1].state.feet.R.z + 0.15);
+    expect(s[1].state.feet.L.x).toBeGreaterThan(s[1].state.feet.R.x);
+    expect(s[3].state.feet.R.z).toBeGreaterThan(s[3].state.feet.L.z + 0.15);
+    expect(s[3].state.feet.R.x).toBeLessThan(s[3].state.feet.L.x);
+    expect(s[3].state.weight).toBe('L');
+  });
   it('keeps turns and clocks', () => {
     const a = parseRow({ counts: '7-8', text: 'Rechten Fuß über linken kreuzen - ¼ Drehung rechts herum und Schritt nach hinten mit links (3 Uhr)' }).actions;
     expect(a[1].moves[0]).toMatchObject({ type: 'step', foot: 'L', turn: { frac: 0.25, dir: 'R' }, dir: { side: 0, fwd: -1 } });
