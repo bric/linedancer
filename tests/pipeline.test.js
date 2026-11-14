@@ -521,3 +521,36 @@ describe('html input', () => {
   });
 });
 
+
+describe('Copperknob page copied with counts in brackets (Glass of Wine)', () => {
+  const sheet = extractSheet(readFileSync(new URL('./fixtures/glass-of-wine.txt', import.meta.url), 'utf8'));
+  const choreo = buildChoreo(sheet);
+  const types = (row) => row.parsed.actions.map((a) => a.moves[0].type + (a.moves[0].foot || ''));
+  it('reads the header with labels and values on separate lines', () => {
+    expect(sheet.title).toBe('Glass of Wine');
+    expect(sheet.choreo).toBe('Malene Jakobsen (DK) - July 2022');
+    expect(sheet.music).toBe('Cry to Me - Kilotile');
+    expect(sheet.counts).toBe(32);
+    expect(sheet.walls).toBe(4);
+    expect(sheet.sections.map((s) => s.rows.length)).toEqual([2, 2, 2, 2]);
+  });
+  it('recognises every row', () => {
+    for (const r of sheet.sections.flatMap((s) => s.rows)) expect(r.warnings, r.text).toEqual([]);
+  });
+  it('maps the count markers, travelling swivels and the bare clock', () => {
+    const [s1, , , s4] = sheet.sections;
+    expect(types(s1.rows[0])).toEqual(['stompR', 'swivelL', 'swivelL', 'swivelL']);
+    expect(s1.rows[0].parsed.actions.map((a) => a.moves[0].part)).toEqual([undefined, 'heel', 'toe', 'heel']);
+    expect(s1.rows[0].parsed.actions[0].moves[0].dir).toEqual({ side: 0.75, fwd: 0.75 });
+    expect(types(s4.rows[0])).toEqual(['stepR', 'recoverL', 'stepR', 'pivot']);
+    expect(s4.rows[0].parsed.actions[3].clock).toBe(270);
+    // linker Fuß wandert bei den Swivels zum rechten
+    const xs = choreo.main.events.slice(0, 4).map((e) => e.state.feet.L.x);
+    expect(xs[3]).toBeGreaterThan(xs[0] + 0.05);
+  });
+  it('turns a quarter left per wall', () => {
+    expect(mod360(choreo.main.drift.theta)).toBe(0);
+    expect(choreo.main.rounds).toBe(4);
+    expect(choreo.main.roundLen).toBe(32);
+  });
+});
