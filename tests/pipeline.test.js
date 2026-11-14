@@ -5,7 +5,7 @@ import { extractSheet } from '../src/sheet/extract.js';
 import { parseRow, resolveReferences } from '../src/sheet/parse.js';
 import { buildChoreo, mod360 } from '../src/choreo/simulate.js';
 import { Timeline } from '../src/player/player.js';
-import { toProxyUrl } from '../src/sheet/load.js';
+import { listDances, saveDance, removeDance, compactSource } from '../src/sheet/library.js';
 
 const html = readFileSync(new URL('./fixtures/my-mama-said.htm', import.meta.url), 'utf8');
 const beats = (l) => parseCounts(l).map((s) => s.beat);
@@ -65,6 +65,40 @@ Stomp forward, clap
     expect(t.extras).toHaveLength(1);
     expect(t.extras[0].note).toBe('nach Ende der 7. Runde - 6 Uhr');
     expect(t.extras[0].rows).toHaveLength(1);
+  });
+  it('reads copied text where several rows run together on one line', () => {
+    const t = extractSheet(`
+
+Va Va Test
+Choreographie: Erika Muster
+Beschreibung:32 count, 4 wall, improver line dance; 0 restarts, 0 tags Musik:Ein Lied von Jemand Hinweis:Der Tanz beginnt nach 32 Taktschlägen
+S1: Rock across, shuffle
+1&Rechten Fuß über linken kreuzen und Gewicht zurück auf den linken Fuß 2&Schritt nach rechts mit rechts und Gewicht zurück auf den linken Fuß 3&4⅛ Drehung rechts herum und Schritt nach vorn mit rechts - Linken Fuß an rechten heransetzen und Schritt nach vorn mit rechts (1:30) 5-84 Schritte nach hinten (r - l - r - l)
+(Restart: In der 3. Runde hier abbrechen)
+S2: Walk
+1-2Schritt nach vorn mit rechts - ½ Drehung links herum auf beiden Ballen, Gewicht am Ende links (7:30) 3-42 Schritte nach vorn (r - l)
+Wiederholung bis zum Ende
+ 
+Erika Muster
+ Adresse: Irgendwo Links: [eMail] [Homepage]
+Aufnahme: 19.10.2026; Stand: 02.11.2026`);
+    expect(t.title).toBe('Va Va Test');
+    expect(t.choreo).toBe('Erika Muster');
+    expect(t.music).toBe('Ein Lied von Jemand');
+    expect(t.hint).toBe('Der Tanz beginnt nach 32 Taktschlägen');
+    expect([t.counts, t.walls]).toEqual([32, 4]);
+    expect(t.sections.map((s) => s.title)).toEqual(['S1: Rock across, shuffle', 'S2: Walk']);
+    expect(t.sections[0].rows.map((r) => r.counts)).toEqual(['1&', '2&', '3&4', '5-8']);
+    expect(t.sections[0].rows[2].text).toBe('⅛ Drehung rechts herum und Schritt nach vorn mit rechts - Linken Fuß an rechten heransetzen und Schritt nach vorn mit rechts (1:30)');
+    expect(t.sections[0].rows[3].text).toBe('4 Schritte nach hinten (r - l - r - l)');
+    expect(t.sections[0].rows[3].note).toBe('(Restart: In der 3. Runde hier abbrechen)');
+    expect(t.sections[1].rows.map((r) => r.counts)).toEqual(['1-2', '3-4']);
+    expect(t.sections[1].rows[1].text).toBe('2 Schritte nach vorn (r - l)');
+    // kein falsches Trennen, wenn die Zählzeiten ordentlich abgesetzt sind
+    expect(extractSheet('T\n9-12 Schritte nach vorn mit rechts - Halten - Halten - Halten').sections[0].rows[0].counts).toBe('9-12');
+    const all = [...t.sections, ...t.extras].flatMap((s) => s.rows);
+    buildChoreo(t);
+    expect(all.flatMap((r) => r.warnings)).toEqual([]);
   });
   it('reads plain text', () => {
     const t = extractSheet('Testtanz\nBeschreibung: 16 count, 4 wall\nS1: Walk\n1-2\tSchritt nach vorn mit rechts - Schritt nach vorn mit links\n3&4 Schritt nach vorn mit rechts - Linken Fuß an rechten heransetzen und Schritt nach vorn mit rechts');
@@ -429,10 +463,61 @@ describe('timeline', () => {
   });
 });
 
-describe('load', () => {
-  it('maps get-in-line URLs to the proxy', () => {
-    expect(toProxyUrl('https://www.get-in-line.de/dances/My%20Mama%20Said_-_Glover.htm')).toBe('/sheet/My%20Mama%20Said_-_Glover.htm');
-    expect(() => toProxyUrl('https://example.com/dances/x.htm')).toThrow();
-    expect(() => toProxyUrl('https://www.copperknob.co.uk/stepsheets/YTPDD72/ziggy')).toThrow(/Text einfügen/);
+describe('library', () => {
+  const fakeStore = (limit = Infinity) => {
+    const data = new Map();
+    return {
+      getItem: (k) => data.get(k) ?? null,
+      setItem: (k, v) => {
+        if (v.length > limit) throw new Error('QuotaExceededError');
+        data.set(k, v);
+      },
+    };
+  };
+  it('remembers dances, newest first, and replaces same-named entries', () => {
+    const store = fakeStore();
+    const sheet = extractSheet(html);
+    saveDance(sheet, html, store);
+    saveDance(extractSheet('Testtanz\n1-2 Schritt nach vorn mit rechts - Halten'), 'Testtanz\n1-2 Schritt nach vorn mit rechts - Halten', store);
+    saveDance(sheet, html, store);
+    const list = listDances(store);
+    expect(list.map((d) => d.title)).toEqual(['My Mama Said', 'Testtanz']);
+    expect(list[0].choreo).toBe('Maddison Glover');
+    removeDance(list[0].id, store);
+    expect(listDances(store).map((d) => d.title)).toEqual(['Testtanz']);
+  });
+  it('stores a compact source that loads to the same dance', () => {
+    const compact = compactSource(html);
+    expect(compact.length).toBeLessThan(html.length * 0.75);
+    expect(compact).not.toMatch(/<script/i);
+    const a = extractSheet(html);
+    const b = extractSheet(compact);
+    expect(b.title).toBe(a.title);
+    expect(b.sections).toEqual(a.sections);
+    expect(b.extras).toEqual(a.extras);
+  });
+  it('survives a missing, broken or full store', () => {
+    expect(listDances(null)).toEqual([]);
+    expect(listDances({ getItem: () => '{kaputt' })).toEqual([]);
+    expect(() => saveDance(extractSheet(html), html, null)).not.toThrow();
+    const tiny = fakeStore(6000);
+    saveDance(extractSheet('A\n1-2 Schritt nach vorn mit rechts - Halten'), 'A\n1-2 Schritt nach vorn mit rechts - Halten', tiny);
+    saveDance(extractSheet(html), html, tiny); // passt nicht zusätzlich → ältester Eintrag weicht
+    expect(listDances(tiny).length).toBeLessThanOrEqual(1);
   });
 });
+
+describe('html input', () => {
+  it('reads get-in-line markup copied with extra attributes', () => {
+    const s = extractSheet('<div style="color: rgb(0,0,0)" class="pro_a">Kopiert</div><div class="pro_o" style="x">S1: Walk</div><div class="pro_l" style="width:65px">1-2</div><div style="y" class="pro_s">Schritt nach vorn mit rechts - Schritt nach vorn mit links</div>');
+    expect(s.title).toBe('Kopiert');
+    expect(s.sections[0].rows).toEqual([{ counts: '1-2', text: 'Schritt nach vorn mit rechts - Schritt nach vorn mit links' }]);
+  });
+  it('falls back to text for other saved pages', () => {
+    const s = extractSheet('<html><head><title>x</title><style>p{}</style></head><body><h1>Ziggy</h1><p>CHASSE R; ROCK BACK</p><p>1&amp;2 Step to R on R foot, step on L foot beside R, step to R on R foot</p><div>3-4<br>Rock back on L foot, recover weight onto R</div><script>var a = "1-2 nope";</script></body></html>');
+    expect(s.title).toBe('Ziggy');
+    expect(s.sections).toHaveLength(1);
+    expect(s.sections[0].rows.map((r) => r.counts)).toEqual(['1&2', '3-4']);
+  });
+});
+

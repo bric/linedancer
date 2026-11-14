@@ -6,9 +6,11 @@ Line-Dance-Schritte in 3D lernen: LineDancer liest eine Schrittbeschreibung, üb
 
 ## Bedienung
 
-1. Die Seite mit der Schrittbeschreibung im Browser öffnen (z. B. auf [get-in-line.de](https://www.get-in-line.de) oder [copperknob.co.uk](https://www.copperknob.co.uk)).
-2. Den Text der Beschreibung markieren und kopieren.
-3. In LineDancer auf **Text einfügen** klicken, einfügen und übernehmen.
+Einen Tanz laden – drei Wege:
+
+- **Einfügen:** Die Seite mit der Schrittbeschreibung im Browser öffnen (z. B. auf [get-in-line.de](https://www.get-in-line.de) oder [copperknob.co.uk](https://www.copperknob.co.uk)), alles markieren und kopieren. In LineDancer dann einfach **Strg/Cmd+V** drücken oder auf **Einfügen** klicken.
+- **Datei:** Die Seite speichern und die Datei ins LineDancer-Fenster ziehen oder über **Datei öffnen** wählen (`.html` oder `.txt`).
+- **Meine Tänze:** Jeder geladene Tanz wird im Browser gemerkt und steht danach unter **Meine Tänze** bereit – der Import ist pro Tanz nur einmal nötig. Die Liste liegt nur in diesem Browser auf diesem Gerät.
 
 Danach:
 
@@ -52,8 +54,6 @@ npm run dev      # http://localhost:5173
 npm test         # Tests
 npm run build    # statischer Build nach dist/
 ```
-
-In der lokal gestarteten Version lassen sich Beschreibungen von get-in-line.de zusätzlich direkt über ihre Adresse laden (Feld oben, dann **Laden**). Auf der gehosteten Seite geht das nicht, weil Browser den direkten Abruf fremder Seiten nicht erlauben; dort bitte **Text einfügen** verwenden.
 
 ## Technik
 

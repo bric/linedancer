@@ -54,7 +54,8 @@ function setMeta(sheet, label, value) {
 export function extractFromHtml(html) {
   const sheet = emptySheet();
   // Nur "Blatt"-DIVs ohne verschachtelte DIVs
-  const re = /<div\s+class\s*=\s*["']?(pro_\w+)["']?\s*>((?:(?!<div)[\s\S])*?)<\/div>/gi;
+  // tolerant gegenüber weiteren Attributen (kopiertes HTML aus der Zwischenablage trägt z. B. style="…")
+  const re = /<div\b[^>]*?\bclass\s*=\s*["']?(pro_\w+)["']?[^>]*>((?:(?!<div)[\s\S])*?)<\/div>/gi;
   let current = null; // Abschnitt oder Extra, in den Zeilen einsortiert werden
   let label = null;
   let counts = null;
@@ -106,7 +107,22 @@ export function extractFromText(text) {
   const rowRe = /^((?:&\s*)?\d{1,2}(?:\s*(?:[&\-–,]|und)\s*\d{0,2})*&?)(?:\s*[:.)]\s*|\s+|(?=[\p{L}¼½¾⅛⅜⅝⅞(]))(\S.*)$/u;
   // Text beginnt mit einem Wort, einem Bruch oder einer Anzahl ("4 Schritte nach hinten")
   const isRow = (m) => m && m[1].match(/\d+/g).every((n) => +n >= 1 && +n <= 16) && /^(?:\d+\s+)?[\p{L}¼½¾⅛⅜⅝⅞(]/u.test(m[2]);
-  const lines = decodeEntities(text).split(/\r?\n/).map((l) => l.replace(/\t/g, '  ').trim()).filter(Boolean);
+  // Beim Kopieren aus dem Browser landen oft mehrere Zeilen einer Seite in einer Textzeile:
+  //   "1&Rechten Fuß … 2&Schritt nach rechts … 3&4Rechten Fuß …"
+  //   "Beschreibung:32 count … Musik:… Hinweis:…"
+  // Vor jeder Zählzeit, die direkt an einem Satzanfang klebt, und vor jedem Kopf-Stichwort neu umbrechen.
+  const LABEL = '(?:&\\s?)?\\d{1,2}(?:[&\\-–]\\d{0,2}|&)*';
+  const START = '(?:[A-ZÄÖÜ¼½¾⅛⅜⅝⅞]|\\d\\s+[A-ZÄÖÜ])'; // auch "5-84 Schritte" = "5-8" + "4 Schritte"
+  const gluedRow = new RegExp(`^${LABEL}${START}`);
+  const nextRow = new RegExp(`\\s+(?=${LABEL}${START})`, 'g');
+  const lines = decodeEntities(text)
+    .split(/\r?\n/)
+    .flatMap((l) => l.replace(/\s+(?=(?:Choreograph?ie|Beschreibung|Musik|Hinweis):)/g, '\n').split('\n'))
+    .map((l) => l.replace(/\t/g, '  ').trim())
+    .flatMap((l) => (gluedRow.test(l) ? l.replace(nextRow, '\n').split('\n') : [l]))
+    // "7-82 Schritte nach vorn": Zählzeiten "7-8" kleben an "2 Schritte" – trennen, wenn das einen gültigen Bereich ergibt
+    .map((l) => l.replace(/^((?:&\s?)?(?:\d{1,2}[&\-–])*?(\d{1,2})[\-–](\d))(?=\d\s+\p{L})/u, (m, label, from, to) => (+to > +from ? `${label} ` : m)))
+    .filter(Boolean);
   for (const [i, line] of lines.entries()) {
     const meta = line.match(/^(Choreograph?ie|Choreographer|Choreographed by|Beschreibung|Musik|Music|Hinweis)\s*:?\s*(.*)$/i);
     if (meta && (line.includes(':') || /by/i.test(meta[1]))) {
@@ -141,6 +157,12 @@ export function extractFromText(text) {
       continue;
     }
     if (/^(wiederholung|start again|begin again|repeat\b|enjoy|have fun)/i.test(line)) continue;
+    // "(Restart: In der 4. Runde … hier abbrechen)" – Anmerkung zur Zeile davor
+    if (/^\(.*\)$/.test(line) && current?.rows.length) {
+      const prev = current.rows.at(-1);
+      prev.note = prev.note ? `${prev.note}\n${line}` : line;
+      continue;
+    }
     // Eine Zeile direkt vor Schrittzeilen ist eine Abschnittsüberschrift, kein Tanztitel
     if (!sheet.title && !current && !isRow((lines[i + 1] || '').match(rowRe))) {
       sheet.title = line;
@@ -160,6 +182,17 @@ export function extractFromText(text) {
   return finish(sheet);
 }
 
+// Beliebiges HTML → Text mit Zeilenumbrüchen an Blockgrenzen
+export function htmlToText(html) {
+  return html
+    .replace(/<(script|style|head|noscript)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>|<\/(div|p|tr|li|h\d|td|section|article|header|footer)>/gi, '\n')
+    .replace(/<[^>]*>/g, '');
+}
+
 export function extractSheet(input) {
-  return /<div[\s>]/i.test(input) ? extractFromHtml(input) : extractFromText(input);
+  if (!/<(div|p|br|span|table|body|html)[\s>/]/i.test(input)) return extractFromText(input);
+  const sheet = extractFromHtml(input);
+  // Keine get-in-line-Struktur (z. B. gespeicherte Seite einer anderen Quelle): als Text lesen
+  return sheet.sections.length ? sheet : extractFromText(htmlToText(input));
 }

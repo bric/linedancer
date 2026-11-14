@@ -63,6 +63,45 @@ export class SheetView {
     this.root.scrollTop = 0;
   }
 
+  // Ohne geladenen Tanz: Liste der gemerkten Tänze und kurze Anleitung
+  renderLibrary(dances, { onOpen, onRemove }) {
+    this.rows.clear();
+    this.active = null;
+    const frag = document.createDocumentFragment();
+    frag.append(el('h2', 'sheet-title', 'Meine Tänze'));
+    if (dances.length) {
+      const list = el('ul', 'library');
+      for (const d of dances) {
+        const li = el('li');
+        const open = el('button', 'open');
+        open.type = 'button';
+        open.append(el('strong', null, d.title), el('span', null, [d.choreo, d.description].filter(Boolean).join(' · ')));
+        open.addEventListener('click', () => onOpen(d));
+        const remove = el('button', 'remove ghost', '✕');
+        remove.type = 'button';
+        remove.title = `„${d.title}“ aus der Liste entfernen`;
+        remove.setAttribute('aria-label', remove.title);
+        remove.addEventListener('click', () => onRemove(d));
+        li.append(open, remove);
+        list.append(li);
+      }
+      frag.append(list);
+    } else {
+      frag.append(el('p', 'library-hint', 'Hier erscheinen die Tänze, die du geladen hast. Sie werden in diesem Browser gemerkt.'));
+    }
+    frag.append(el('h3', 'section-title', 'Tanz laden'));
+    const how = el('ol', 'library-hint');
+    for (const text of [
+      'Seite mit der Schrittbeschreibung öffnen, alles markieren und kopieren – dann hier Strg/Cmd+V drücken oder oben „Einfügen“ wählen.',
+      'Oder die Seite speichern und die Datei in dieses Fenster ziehen bzw. über „Datei öffnen“ wählen.',
+    ]) {
+      how.append(el('li', null, text));
+    }
+    frag.append(how);
+    this.root.replaceChildren(frag);
+    this.root.scrollTop = 0;
+  }
+
   highlight(key) {
     if (key === this.active) return;
     this.rows.get(this.active)?.classList.remove('active');

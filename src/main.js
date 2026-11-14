@@ -2,18 +2,19 @@ import { Stage } from './scene.js';
 import { Figure } from './figure/figure.js';
 import { Timeline, standingPose } from './player/player.js';
 import { extractSheet } from './sheet/extract.js';
-import { fetchSheet, hasProxy } from './sheet/load.js';
 import { buildChoreo, fmtClock, initialState } from './choreo/simulate.js';
 import { SheetView } from './ui/sheetView.js';
+import { listDances, saveDance, removeDance } from './sheet/library.js';
 
 const $ = (id) => document.getElementById(id);
 const ui = {
-  form: $('load-form'), url: $('url'), status: $('status'),
+  status: $('status'),
   count: $('count'), stepText: $('step-text'), info: $('info'),
   play: $('play'), prev: $('prev'), next: $('next'), restart: $('restart'),
   rate: $('rate'), rateOut: $('rate-out'), bpm: $('bpm'), loop: $('loop'), click: $('click'),
   pasteOpen: $('paste-open'), pasteDialog: $('paste-dialog'), pasteText: $('paste-text'),
   views: $('views'),
+  fileOpen: $('file-open'), fileInput: $('file-input'), libraryOpen: $('library-open'), dropHint: $('drop-hint'),
 };
 
 const stage = new Stage($('canvas'));
@@ -53,16 +54,66 @@ function loadSheet(source) {
   sheetView.render(sheet);
   setPlaying(false);
   useTimeline('m');
+  saveDance(sheet, source); // in „Meine Tänze“ merken
 }
 
-async function loadUrl(url) {
-  setStatus('Lade Schrittbeschreibung …', 'info');
+// Lädt eine Beschreibung und zeigt Fehler in der Statuszeile. Liefert true bei Erfolg.
+function tryLoad(source) {
   try {
-    loadSheet(await fetchSheet(url));
+    loadSheet(source);
     setStatus('');
+    return true;
   } catch (err) {
-    setStatus(err instanceof TypeError ? 'Die Seite ist nicht erreichbar. Läuft die Anwendung über „npm run dev“?' : err.message);
+    setStatus(err.message);
+    return false;
   }
+}
+
+// Aus der Zwischenablage: bevorzugt das HTML einer get-in-line-Seite, sonst den reinen Text
+function loadClipboard(html, text) {
+  if (html && /class\s*=\s*["']?pro_s/i.test(html)) {
+    try {
+      loadSheet(html);
+      setStatus('');
+      return true;
+    } catch {
+      // HTML unbrauchbar → mit dem Text weiter
+    }
+  }
+  if (!text?.trim()) {
+    setStatus('Die Zwischenablage enthält keinen Text. Bitte zuerst die Schrittbeschreibung markieren und kopieren.');
+    return false;
+  }
+  return tryLoad(text);
+}
+
+async function loadFile(file) {
+  if (!file) return;
+  if (file.size > 3_000_000) return setStatus('Die Datei ist zu groß. Erwartet wird eine gespeicherte Seite (.html) oder eine Textdatei.');
+  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+    return setStatus('PDF-Dateien können nicht gelesen werden. Bitte die Seite als HTML speichern oder den Text kopieren und einfügen.');
+  }
+  tryLoad(await file.text());
+}
+
+// Zurück zur Liste der gemerkten Tänze (ohne geladenen Tanz)
+function showLibrary() {
+  setPlaying(false);
+  app.sheet = null;
+  app.tl = null;
+  app.timelines = {};
+  figure.update(standingPose(initialState()));
+  stage.track(figure.centre, true);
+  ui.count.textContent = '–';
+  ui.stepText.textContent = 'Noch kein Tanz geladen';
+  ui.info.textContent = 'Kopierte Schrittbeschreibung mit Strg/Cmd+V einfügen, eine Datei hierher ziehen oder rechts einen Tanz wählen.';
+  sheetView.renderLibrary(listDances(), {
+    onOpen: (d) => tryLoad(d.source),
+    onRemove: (d) => {
+      removeDance(d.id);
+      showLibrary();
+    },
+  });
 }
 
 // ---------- Wiedergabe ----------
@@ -218,19 +269,63 @@ function frame(now) {
 
 // ---------- Bedienung ----------
 
-ui.form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  loadUrl(ui.url.value);
+// „Einfügen“: direkt aus der Zwischenablage; verweigert der Browser den Zugriff, von Hand im Dialog
+ui.pasteOpen.addEventListener('click', async () => {
+  try {
+    let html = '';
+    let text = '';
+    if (navigator.clipboard.read) {
+      for (const item of await navigator.clipboard.read()) {
+        if (item.types.includes('text/html')) html = await (await item.getType('text/html')).text();
+        if (item.types.includes('text/plain')) text = await (await item.getType('text/plain')).text();
+      }
+    } else {
+      text = await navigator.clipboard.readText();
+    }
+    loadClipboard(html, text);
+  } catch {
+    ui.pasteText.value = '';
+    ui.pasteDialog.showModal();
+  }
 });
-ui.pasteOpen.addEventListener('click', () => ui.pasteDialog.showModal());
 ui.pasteDialog.addEventListener('close', () => {
   if (ui.pasteDialog.returnValue !== 'ok' || !ui.pasteText.value.trim()) return;
-  try {
-    loadSheet(ui.pasteText.value);
-    setStatus('');
-  } catch (err) {
-    setStatus(err.message);
-  }
+  tryLoad(ui.pasteText.value);
+});
+// Strg/Cmd+V irgendwo auf der Seite
+document.addEventListener('paste', (e) => {
+  if (e.target.closest?.('input, textarea')) return;
+  e.preventDefault();
+  loadClipboard(e.clipboardData.getData('text/html'), e.clipboardData.getData('text/plain'));
+});
+
+ui.fileOpen.addEventListener('click', () => ui.fileInput.click());
+ui.fileInput.addEventListener('change', () => {
+  loadFile(ui.fileInput.files[0]);
+  ui.fileInput.value = '';
+});
+ui.libraryOpen.addEventListener('click', showLibrary);
+
+// Datei (oder markierten Text) ins Fenster ziehen
+let dragDepth = 0;
+const showDrop = (on) => (ui.dropHint.hidden = !on);
+window.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dragDepth++;
+  showDrop(true);
+});
+window.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) showDrop(false);
+});
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  showDrop(false);
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+  else loadClipboard(e.dataTransfer.getData('text/html'), e.dataTransfer.getData('text/plain'));
 });
 ui.play.addEventListener('click', () => setPlaying(!app.playing || app.stopAt !== null));
 ui.prev.addEventListener('click', () => step(-1));
@@ -256,9 +351,5 @@ window.addEventListener('keydown', (e) => {
 });
 
 // Start ohne geladenen Tanz: Figur steht bereit, bis eine Beschreibung geladen wird
-figure.update(standingPose(initialState()));
-ui.stepText.textContent = 'Noch kein Tanz geladen';
-ui.info.textContent = hasProxy()
-  ? 'Oben eine Adresse von get-in-line.de laden oder über „Text einfügen“ eine Schrittbeschreibung einfügen.'
-  : 'Schrittbeschreibung im Browser öffnen, den Text kopieren und über „Text einfügen“ laden.';
+showLibrary();
 requestAnimationFrame(frame);

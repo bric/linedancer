@@ -9,12 +9,13 @@
   <body>
     <header>
       <h1>LineDancer</h1>
-      <form id="load-form">
-        <input id="url" type="url" required placeholder="https://www.get-in-line.de/dances/…" aria-label="Adresse der Schrittbeschreibung" />
-        <button type="submit">Laden</button>
-      </form>
-      <button id="paste-open" type="button" class="ghost">Text einfügen</button>
+      <span class="spacer"></span>
+      <button id="file-open" type="button" title="Gespeicherte Seite (.html) oder Textdatei öffnen – oder die Datei einfach ins Fenster ziehen">Datei öffnen</button>
+      <input id="file-input" type="file" accept=".htm,.html,.txt,text/html,text/plain" hidden />
+      <button id="paste-open" type="button" title="Kopierte Schrittbeschreibung einfügen (auch direkt mit Strg/Cmd+V)">Einfügen</button>
+      <button id="library-open" type="button" class="ghost">Meine Tänze</button>
     </header>
+    <div id="drop-hint" hidden>Datei hier ablegen</div>
 
     <p id="status" role="status" hidden></p>
 
@@ -54,7 +55,7 @@
     <dialog id="paste-dialog">
       <form method="dialog">
         <h2>Schrittbeschreibung einfügen</h2>
-        <p>Text einer Schrittbeschreibung einfügen, deutsch oder englisch – pro Zeile Zählzeiten und Beschreibung, z. B. „1-2 Schritt nach vorn mit rechts - Schritt nach vorn mit links“ oder „1-2 Step forward on R, touch L beside R“. Von copperknob.co.uk einfach den Schritt-Text der Seite kopieren.</p>
+        <p>Der Zugriff auf die Zwischenablage war nicht möglich – bitte hier von Hand einfügen. Text einer Schrittbeschreibung, deutsch oder englisch – pro Zeile Zählzeiten und Beschreibung, z. B. „1-2 Schritt nach vorn mit rechts - Schritt nach vorn mit links“ oder „1-2 Step forward on R, touch L beside R“. Von copperknob.co.uk einfach den Schritt-Text der Seite kopieren.</p>
         <textarea id="paste-text" rows="14" spellcheck="false"></textarea>
         <div class="dialog-actions">
           <button value="cancel" class="ghost">Abbrechen</button>
