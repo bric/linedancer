@@ -554,3 +554,26 @@ describe('Copperknob page copied with counts in brackets (Glass of Wine)', () =>
     expect(choreo.main.roundLen).toBe(32);
   });
 });
+
+describe('Glass of Wine, German sheet', () => {
+  const read = (f) => extractSheet(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
+  const sheet = read('glass-of-wine-de.txt');
+  const choreo = buildChoreo(sheet);
+  const sig = (sh) => sh.sections.flatMap((s) => s.rows).flatMap((r) => r.parsed.actions).map((a) => a.moves.map((m) => `${m.type}${m.foot || ''}${m.part || ''}${m.type === 'swivel' ? m.dir.side : ''}`).join('+'));
+  it('recognises every row', () => {
+    expect(sheet.sections.map((s) => s.rows.length)).toEqual([2, 3, 4, 4]);
+    for (const r of sheet.sections.flatMap((s) => s.rows)) expect(r.warnings, r.text).toEqual([]);
+    expect(choreo.main.rounds).toBe(4);
+  });
+  it('swivels one foot towards the other: heel, toe, heel', () => {
+    expect(sig(sheet).slice(0, 8)).toEqual(['stompR', 'swivelLheel1', 'swivelLtoe1', 'swivelLheel1', 'stompL', 'swivelRheel-1', 'swivelRtoe-1', 'swivelRheel-1']);
+    const ev = choreo.main.events;
+    expect(ev[3].state.feet.L.x).toBeGreaterThan(ev[0].state.feet.L.x + 0.05);
+    expect(ev[3].state.feet.R.x).toBe(ev[0].state.feet.R.x);
+  });
+  it('matches the English sheet of the same dance', () => {
+    const en = read('glass-of-wine.txt');
+    buildChoreo(en);
+    expect(sig(sheet)).toEqual(sig(en));
+  });
+});
