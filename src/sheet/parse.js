@@ -96,7 +96,7 @@ export function parsePart(src) {
   if (/(fuß|bein)\s.*anheben/.test(t)) {
     // "…, rechten Fuß etwas anheben": Stilhinweis zur Bewegung davor, keine eigene Zählzeit
     if (/\b(etwas|leicht|wenig)\b/.test(t)) return { type: 'modPrev', patch: {}, add: { type: 'hook', foot, small: true } };
-    return out('hook', { behind: /hinter/.test(t) });
+    return out('hook', { behind: /hinter/.test(t), across: /kreuzen|schienbein|knie/.test(t) });
   }
   if (/heranziehen/.test(t)) return out('touch', { part: 'flat', beside: true });
   if (/hacken?\b.*bounce/.test(t)) return out('bounce', { both: /beide|hacken/.test(t) });
@@ -127,7 +127,9 @@ export function parsePart(src) {
   if (/\b(hand|arm|faust)\b/.test(t)) return out('arm', { up: /oben|hoch/.test(t) });
   // "… nach vorn, hinten, vorn und wieder nach hinten schwingen": nur eine Richtung, die Bewegung steht daneben
   const bare = !!dir && /^(?:(?:wieder|und|nach|schräg|rechts|links|vorne?|hinten|zurück)\s*)+$/.test(t);
-  return { ...mv, type: 'unknown', dir, bare };
+  // "Beide Hacken, Fußspitzen, Hacken und wieder Fußspitzen nach links drehen": nur das Körperteil genannt
+  const po = t.match(/^(?:(?:beide|wieder|und|dann)\s+)*(hacken?|fersen?|fußspitzen?|spitzen?)$/);
+  return { ...mv, type: 'unknown', dir, bare, partOnly: po ? (/spitze/.test(po[1]) ? 'toe' : 'heel') : null };
 }
 
 // Trennt an `sep`, aber nicht innerhalb von Klammern.
@@ -188,6 +190,11 @@ export function mergeUnits(units) {
   }
   out.forEach((u, i) => {
     const m = u.moves[0];
+    if (m.partOnly) {
+      const swivel = out.slice(i + 1).map((x) => x.moves[0]).find((x) => x.type === 'swivel');
+      if (swivel) u.moves[0] = { ...swivel, part: m.partOnly, both: true };
+      return;
+    }
     if (!m.bare) return;
     const model = [...out.slice(0, i).reverse(), ...out.slice(i + 1)].map((x) => x.moves[0]).find((x) => x.type !== 'unknown');
     if (model) u.moves[0] = { ...model, dir: m.dir };
@@ -229,6 +236,9 @@ function parseSegment(seg) {
   // "Hacken 3x heben und senken": pro Zählzeit ein ganzer Bounce statt heben/senken auf zwei Zählzeiten
   const times = text.match(/\b([2-8])\s?x\b/i);
   if (times) text = text.replace(/heben und (?:wieder )?senken/i, 'bounce');
+
+  // "Rechten Fuß anheben und vor linkem Schienbein kreuzen" ist eine Bewegung (Hook)
+  text = text.replace(/anheben und (vor|hinter)\b/i, 'anheben $1');
 
   let units = [];
   const multi = text.match(/^(\d+)\s+(.*?)schritte\b(.*)$/i);
@@ -326,6 +336,17 @@ export function resolveReferences(sections) {
       } else if (/^wie\s+(die\s+)?schrittfolge\s+(zu)?vor/i.test(row.text) && si > 0) {
         source = sections[si - 1].rows.flatMap((r) => r.parsed.actions);
         from = Math.floor(source[0]?.beat ?? 0);
+      } else {
+        // "Wie Schrittfolge S1, aber spiegelbildlich mit links beginnend"
+        const named = row.text.match(/^wie\s+(?:\S+\s+)?S\s?(\d+)\b/i);
+        if (named) {
+          const byTitle = sections.findIndex((x) => new RegExp(`^S\\s?${named[1]}\\b`, 'i').test(x.title));
+          const idx = byTitle >= 0 ? byTitle : +named[1] - 1;
+          if (idx >= 0 && idx < si) {
+            source = sections[idx].rows.flatMap((r) => r.parsed.actions);
+            from = Math.floor(source[0]?.beat ?? 0);
+          }
+        }
       }
       if (!source?.length) return;
       const span = (list) => Math.floor(list.at(-1).beat) - Math.floor(list[0].beat);

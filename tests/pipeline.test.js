@@ -158,6 +158,31 @@ describe('parse', () => {
     expect(types('3-4', 'Rechten Fuß hinter linkem Bein anheben - Rechten Fuß an linken heransetzen')).toEqual(['hookR', 'togetherR']);
     expect(types('1-2', 'Linken Fuß anheben - Halten')).toEqual(['hookL', 'hold']);
   });
+  it('handles the Hoedown vocabulary', () => {
+    // Abschnitt per Namen spiegeln
+    const rows1 = [{ counts: '1-2', text: 'Schritt nach vorn mit rechts - Linken Fuß neben rechtem auftippen' }];
+    const rows2 = [{ counts: '1-2', text: 'Wie Schrittfolge S1, aber spiegelbildlich mit links beginnend' }];
+    for (const r of [...rows1, ...rows2]) r.parsed = parseRow(r);
+    resolveReferences([{ title: 'S1: Step, touch', rows: rows1 }, { title: 'S2: Step, touch', rows: rows2 }]);
+    expect(rows2[0].parsed.unknown).toBe(false);
+    expect(rows2[0].parsed.actions.map((a) => a.moves[0].type + a.moves[0].foot)).toEqual(['stepL', 'touchR']);
+
+    // wandernde Swivels: Hacken, Spitzen, Hacken, Spitzen nach links
+    const row = { counts: '5-8', text: 'Beide Hacken, Fußspitzen, Hacken und wieder Fußspitzen nach links drehen' };
+    const a = parseRow(row);
+    expect(a.unknown || a.uncertain).toBe(false);
+    expect(a.actions.map((x) => x.moves[0].type + ':' + x.moves[0].part)).toEqual(['swivel:heel', 'swivel:toe', 'swivel:heel', 'swivel:toe']);
+    const ev = buildChoreo(extractSheet(`T\n1-4 ${row.text}\n5-6 Schritt nach vorn mit rechts - Halten`)).main.events;
+    expect(ev.slice(0, 4).map((e) => e.state.feet.R.rot)).toEqual([35, -35, 35, -35]);
+    const xs = ev.slice(0, 4).map((e) => e.state.feet.L.x);
+    expect(xs[2]).toBeLessThan(xs[0] - 0.1); // Hacken wandern nach links
+    expect(xs[1]).toBe(xs[0]); // Spitzen drehen um die Hacke
+    expect(ev[4].state.feet.L.rot).toBe(0); // beim nächsten Schritt stehen die Füße wieder gerade
+    expect(ev[4].state.feet.R.rot).toBe(0);
+
+    // Hook vor dem Schienbein ist eine Bewegung
+    expect(types('7-8', 'Rechte Hacke vorn auftippen - Rechten Fuß anheben und vor linkem Schienbein kreuzen')).toEqual(['touchR', 'hookR']);
+  });
   it('keeps turns and clocks', () => {
     const a = parseRow({ counts: '7-8', text: 'Rechten Fuß über linken kreuzen - ¼ Drehung rechts herum und Schritt nach hinten mit links (3 Uhr)' }).actions;
     expect(a[1].moves[0]).toMatchObject({ type: 'step', foot: 'L', turn: { frac: 0.25, dir: 'R' }, dir: { side: 0, fwd: -1 } });

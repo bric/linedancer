@@ -76,7 +76,7 @@ function applyMove(s, m) {
     s.weight = foot;
   };
   const footBased = !['hold', 'clap', 'arm', 'hips', 'swivel', 'bounce', 'unknown', 'pivot', 'turn'].includes(m.type);
-  if (m.turn && footBased) base.rot = th; // Standbein dreht auf dem Ballen mit
+  if (footBased) base.rot = th; // Standbein steht in Blickrichtung (dreht bei Drehungen auf dem Ballen mit)
 
   switch (m.type) {
     case 'step': {
@@ -174,7 +174,8 @@ function applyMove(s, m) {
         Object.assign(self, { y: 0.07, pitch: 0.25 });
         break;
       }
-      place(add(home(0.3), [F[0] * (m.behind ? -0.18 : 0.15), F[1] * (m.behind ? -0.18 : 0.15)]), { y: 0.32, pitch: 0.6, ground: false });
+      // across: Fuß quer vor/hinter dem Schienbein des Standbeins
+      place(add(home(m.across ? -0.1 : 0.3), [F[0] * (m.behind ? -0.18 : 0.15), F[1] * (m.behind ? -0.18 : 0.15)]), { y: 0.32, pitch: 0.6, ground: false });
       break;
     case 'swivel': {
       // Fußspitzen bzw. Hacken auf der Stelle drehen
@@ -184,14 +185,17 @@ function applyMove(s, m) {
         const way = m.mode === 'apart' ? sgn(ft) : m.mode === 'in' ? -sgn(ft) : Math.sign(d.side) || sgn(ft);
         const delta = m.mode === 'centre' ? 0 : way * k * 35;
         const foot = s.feet[ft];
-        foot.rot = th + delta;
         // Hacken-Swivel dreht um den Fußballen: der Ballen bleibt stehen, Knöchel und Hacke schwenken aus.
-        // (Spitzen-Swivel dreht um die Hacke, die praktisch unter dem Knöchel liegt.)
+        // Spitzen-Swivel dreht um die Hacke, die praktisch unter dem Knöchel liegt.
+        // Gedreht wird aus der aktuellen Lage – Hacken, Spitzen, Hacken, Spitzen wandert so zur Seite.
         const ball = m.part === 'heel' ? BALL : 0;
-        const a = fwdV(th);
+        const a = fwdV(foot.rot);
+        foot.rot = th + delta;
         const b = fwdV(foot.rot);
-        foot.x = foot.gx + (a[0] - b[0]) * ball;
-        foot.z = foot.gz + (a[1] - b[1]) * ball;
+        foot.x += (a[0] - b[0]) * ball;
+        foot.z += (a[1] - b[1]) * ball;
+        foot.gx = foot.x;
+        foot.gz = foot.z;
       }
       break;
     }
