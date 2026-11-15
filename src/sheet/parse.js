@@ -81,7 +81,9 @@ export function parsePart(src) {
   const we = t.match(/gewicht (?:am ende|bleibt) (?:auf )?(rechts|links)/);
   if (we) return { type: 'modPrev', patch: { weightEnd: we[1] === 'rechts' ? 'R' : 'L' } };
   if (/gewicht (?:zurück |wieder )?auf/.test(t)) return out('recover');
-  if (/hüfte/.test(t)) return { ...mv, type: 'hips', dir };
+  // "Oberkörper nach rechts schwingen" (Sway) bewegt wie die Hüften keinen Fuß
+  if (/hüfte|oberkörper/.test(t)) return { ...mv, type: 'hips', dir };
+  if (/schnipp/.test(t)) return { ...mv, type: 'arm', foot, up: true };
   if (/im kreis/.test(t) && /schwingen/.test(t)) return out('sweep');
   if (/schwingen/.test(t)) return out('scuff');
   if (/schleifen/.test(t)) return { type: 'modPrev', patch: {} };
@@ -253,7 +255,7 @@ function parseSegment(seg) {
   if (times) text = text.replace(/heben und (?:wieder )?senken/i, 'bounce');
 
   // "Rechten Fuß anheben und vor linkem Schienbein kreuzen" ist eine Bewegung (Hook)
-  text = text.replace(/anheben und (vor|hinter)\b/i, 'anheben $1');
+  text = text.replace(/anheben und (vor|hinter)\b/i, 'anheben $1').replace(/anheben und (?=(?:ein)?kreuzen)/i, 'anheben ');
 
   let units = [];
   const multi = text.match(/^(\d+)\s+(.*?)schritte\b(.*)$/i);

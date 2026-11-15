@@ -163,7 +163,11 @@ export function extractFromText(text) {
         current = { title: '', rows: [] };
         sheet.sections.push(current);
       }
-      current.rows.push({ counts: row[1].replace(/\s+/g, ''), text: row[2].trim() });
+      const entry = { counts: row[1].replace(/\s+/g, ''), text: row[2].trim() };
+      // Anmerkung am Zeilenende: "… kreuzen  (Restart: In der 4. Runde … hier abbrechen)"
+      const note = entry.text.match(/^(.*\S)\s+(\((?:Restart|Ende|Ending|Hinweis|Tag|Brücke|Note)\b[^()]*:[^()]*\))$/i);
+      if (note) Object.assign(entry, { text: note[1], note: note[2] });
+      current.rows.push(entry);
       continue;
     }
     if (/^(wiederholung|start again|begin again|repeat\b|enjoy|have fun)/i.test(line)) continue;

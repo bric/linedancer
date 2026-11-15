@@ -577,3 +577,32 @@ describe('Glass of Wine, German sheet', () => {
     expect(sig(sheet)).toEqual(sig(en));
   });
 });
+
+describe('Made In Mexico', () => {
+  const sheet = extractSheet(readFileSync(new URL('./fixtures/made-in-mexico.txt', import.meta.url), 'utf8'));
+  const choreo = buildChoreo(sheet);
+  const rows = sheet.sections.flatMap((s) => s.rows);
+  const moves = (r) => r.parsed.actions.map((a) => a.moves.map((m) => m.type + (m.foot || '')).join('+'));
+  it('recognises every row', () => {
+    expect(sheet.sections.map((s) => s.rows.length)).toEqual([4, 4, 4, 4]);
+    expect(sheet.extras[0].rows).toHaveLength(5);
+    for (const r of [...rows, ...sheet.extras[0].rows]) expect(r.warnings, r.text).toEqual([]);
+    expect(choreo.main.rounds).toBe(4);
+    expect(choreo.extras[0].initial.theta).toBe(180);
+  });
+  it('reads sway, hook with snap and the sweep', () => {
+    expect(moves(rows[0])).toEqual(['stepR+hips', 'togetherL']);
+    expect(moves(rows[3])).toEqual(['stepR', 'hookL+arm']);
+    expect(rows[3].parsed.actions[1].moves[0].across).toBe(true);
+    expect(moves(rows[5])).toEqual(['stepL', 'scuffR']);
+    expect(choreo.main.events[0].state.sway).toEqual({ side: 1, fwd: 0 });
+    expect(choreo.main.events[7].state.gesture).toBe('upR');
+  });
+  it('separates notes glued to the end of a row', () => {
+    expect(rows[7].text).toBe('Schritt nach rechts mit rechts - Linken Fuß über rechten kreuzen');
+    expect(rows[7].note).toMatch(/^\(Restart: In der 4\. und 9\. Runde/);
+    expect(rows[11].note).toMatch(/^\(Ende: /);
+    expect(rows[15].note).toBe('(Hinweis für S4: Kleine Schritte)');
+    expect(rows[3].note).toBeUndefined(); // "(9 Uhr)" bleibt Blickrichtung
+  });
+});
