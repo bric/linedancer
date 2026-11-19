@@ -255,6 +255,8 @@ function parseSegment(seg) {
   if (times) text = text.replace(/heben und (?:wieder )?senken/i, 'bounce');
 
   // "Rechten Fuß anheben und vor linkem Schienbein kreuzen" ist eine Bewegung (Hook)
+  // "Linken Fuß an rechten heranziehen und an rechten heransetzen" (Drag, Close) ist eine Bewegung auf einer Zählzeit
+  text = text.replace(/heranziehen und (?:(?:an|neben) (?:den |dem )?(?:recht|link)e[nm] )?(?:heransetzen|abstellen)/i, 'heransetzen');
   text = text.replace(/anheben und (vor|hinter)\b/i, 'anheben $1').replace(/anheben und (?=(?:ein)?kreuzen)/i, 'anheben ');
 
   let units = [];
@@ -370,8 +372,12 @@ export function resolveReferences(sections) {
       if (span(source) !== span(own)) return;
       const mirror = /spiegel|seitenverkehrt|mirror|opposite/i.test(row.text);
       const offset = Math.floor(own[0].beat) - from;
+      // Uhr-Angaben der Vorlage gelten dort, nicht hier ("Wie 1-4 (6 Uhr)"): nur die eigene übernehmen
+      const clock = own.findLast((a) => a.clock != null)?.clock ?? null;
+      const copied = source.map((a) => ({ ...a, clock: null, beat: a.beat + offset, moves: mirror ? a.moves.map(mirrorMove) : a.moves }));
+      if (clock != null) copied.at(-1).clock = clock;
       row.parsed = {
-        actions: source.map((a) => ({ ...a, beat: a.beat + offset, moves: mirror ? a.moves.map(mirrorMove) : a.moves })),
+        actions: copied,
         uncertain: false,
         unknown: source.some((a) => a.moves.some((m) => m.type === 'unknown')),
       };

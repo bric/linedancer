@@ -606,3 +606,23 @@ describe('Made In Mexico', () => {
     expect(rows[3].note).toBeUndefined(); // "(9 Uhr)" bleibt Blickrichtung
   });
 });
+
+describe('Cut A Rug', () => {
+  const sheet = extractSheet(readFileSync(new URL('./fixtures/cut-a-rug.htm', import.meta.url), 'utf8'));
+  const choreo = buildChoreo(sheet);
+  const rows = sheet.sections.flatMap((s) => s.rows);
+  const moves = (r) => r.parsed.actions.map((a) => a.moves.map((m) => m.type + (m.foot || '')).join('+'));
+  it('recognises every row', () => {
+    expect(sheet.sections.map((s) => s.rows.length)).toEqual([3, 4, 4, 3]);
+    for (const r of rows) expect(r.warnings, r.text).toEqual([]);
+    expect(choreo.main.rounds).toBe(2);
+  });
+  it('reads drag and close as one move', () => {
+    expect(moves(rows[7])).toEqual(['stepR', 'togetherL']);
+    expect(moves(rows[9])).toEqual(['stepL', 'togetherR']);
+  });
+  it('uses the own clock of a reference row, not the copied one', () => {
+    const a = rows[13].parsed.actions;
+    expect(a.map((x) => x.clock)).toEqual([null, null, null, 180]);
+  });
+});
