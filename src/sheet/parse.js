@@ -88,6 +88,8 @@ export function parsePart(src) {
   if (/schwingen/.test(t)) return out('scuff');
   if (/schleifen/.test(t)) return { type: 'modPrev', patch: {} };
   if (/kick/.test(t)) return out('kick');
+  // Knee Pop: "Beide Knie nach vorn schieben" – Hacken heben, Knie gehen nach vorn
+  if (/knie\b.*(schieben|beugen|drücken)/.test(t)) return out('heelUp', { both: /beide/.test(t) || !foot });
   if (/knie\b.*(heben|hochziehen)/.test(t)) return out('hitch', { small: /wenig|leicht/.test(t), across: /über (?:das |dem )?(?:link|recht)e[sn]?/.test(t) });
   if (/drehen/.test(t) && /spitze|hacke|ferse/.test(t)) {
     // Swivels: "Beide Hacken nach links drehen - … wieder zur Mitte drehen"
@@ -109,7 +111,7 @@ export function parsePart(src) {
   }
   if (/heranziehen/.test(t)) return out('touch', { part: 'flat', beside: true });
   if (/hacken?\b.*bounce/.test(t)) return out('bounce', { both: /beide|hacken/.test(t) });
-  if (/hacken?\b.*heben/.test(t)) return out('heelUp');
+  if (/hacken?\b.*heben/.test(t)) return out('heelUp', { both: /\bbeide|hacken\b/.test(t) });
   if (/senken/.test(t)) return out('heelDown');
   if (/tippen/.test(t)) {
     const part = /hacke|ferse/.test(t) ? 'heel' : /flach/.test(t) ? 'flat' : 'toe';
@@ -130,17 +132,20 @@ export function parsePart(src) {
       size,
       inPlace: /auf der stelle/.test(t),
       jump: /sprung|springen/.test(t),
+      // "Schritt zurück in die Ausgangsposition mit rechts": dorthin, wo der Fuß vor seinem letzten Schritt stand
+      ...(/ausgangs(?:position|stellung)/.test(t) && { dir: null, origin: true }),
       stomp: /stampfend/.test(t),
     });
   }
   if (/\b(hand|arm|faust)\b/.test(t)) return out('arm', { up: /oben|hoch/.test(t) });
   // "… nach vorn, hinten, vorn und wieder nach hinten schwingen": nur eine Richtung, die Bewegung steht daneben
-  const bare = !!dir && /^(?:(?:wieder|und|nach|schräg|rechts|links|vorne?|hinten|zurück)\s*)+$/.test(t);
+  // auch mit Fuß: "Kleinen Schritt nach rechts mit rechts und nach links mit links"
+  const bare = !!dir && /^(?:(?:wieder|und|nach|schräg|rechts|links|vorne?|hinten|zurück|mit)\s*)+$/.test(t);
   // "Beide Hacken, Fußspitzen, Hacken und wieder Fußspitzen nach links drehen": nur das Körperteil genannt
   const po = t.match(/^(?:(?:beide|wieder|und|dann|(?:link|recht)e[nr]?)\s+)*(hacken?|fersen?|fußspitzen?|spitzen?)$/);
   // nur in der Einzahl ("Linke Hacke, Fußspitze …") meint es einen Fuß
   const single = po && !/beide|n$/.test(t);
-  return { ...mv, type: 'unknown', dir: po ? null : dir, bare, partOnly: po ? (/spitze/.test(po[1]) ? 'toe' : 'heel') : null, foot: po ? foot : undefined, single };
+  return { ...mv, type: 'unknown', dir: po ? null : dir, bare, partOnly: po ? (/spitze/.test(po[1]) ? 'toe' : 'heel') : null, foot: po || bare ? foot : undefined, single };
 }
 
 // Trennt an `sep`, aber nicht innerhalb von Klammern.
@@ -213,7 +218,10 @@ export function mergeUnits(units) {
     }
     if (!m.bare) return;
     const model = [...out.slice(0, i).reverse(), ...out.slice(i + 1)].map((x) => x.moves[0]).find((x) => x.type !== 'unknown');
-    if (model) u.moves[0] = { ...model, dir: m.dir };
+    if (!model) return;
+    // "Hacken anheben und wieder zurück": zurück heißt hier absenken
+    if (model.type === 'heelUp' && i > 0) u.moves[0] = { ...model, type: 'heelDown' };
+    else u.moves[0] = { ...model, dir: m.dir, ...(m.foot && { foot: m.foot }) };
   });
   // "Hüften nach vorn … und wieder nach hinten schwingen": das Verb am Ende meint weiter die Hüften
   if (out.some((u) => u.moves[0].type === 'hips')) {
@@ -245,6 +253,7 @@ function parseSegment(seg) {
   });
   text = text
     .replace(/\(\s*(etwas nach (?:vorne?|hinten))\s*\)/i, ' $1')
+    .replace(/\s*\(\s*(gewicht am ende (?:rechts|links))\s*\)/i, ', $1')
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .trim();

@@ -626,3 +626,32 @@ describe('Cut A Rug', () => {
     expect(a.map((x) => x.clock)).toEqual([null, null, null, 180]);
   });
 });
+
+describe("I'm Free", () => {
+  const sheet = extractSheet(readFileSync(new URL('./fixtures/im-free.txt', import.meta.url), 'utf8'));
+  const choreo = buildChoreo(sheet);
+  const rows = sheet.sections.flatMap((s) => s.rows);
+  const moves = (r) => r.parsed.actions.map((a) => a.moves.map((m) => m.type + (m.foot || '') + (m.both ? '*' : '')).join('+'));
+  it('recognises every row', () => {
+    expect(sheet.sections.map((s) => s.rows.length)).toEqual([3, 4, 4, 5]);
+    for (const r of rows) expect(r.warnings, r.text).toEqual([]);
+    expect(choreo.main.rounds).toBe(4);
+  });
+  it('reads out-out, in-in and the knee pop', () => {
+    expect(moves(rows[13])).toEqual(['stepR', 'stepL', 'hold']);
+    expect(rows[13].parsed.actions[1].moves[0].size).toBe(0.6);
+    expect(moves(rows[14])).toEqual(['stepR', 'togetherL']);
+    expect(moves(rows[15])).toEqual(['heelUp*+heelUp*', 'heelDown*']);
+    const ev = choreo.main.events.filter((e) => e.beat < 32);
+    const at = (beat) => ev.findLast((e) => e.beat <= beat).state;
+    // "in": der rechte Fuß kehrt dorthin zurück, wo er vor "out" stand
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+    expect(dist(at(28).feet.R, at(27).feet.R)).toBeGreaterThan(0.2);
+    expect(dist(at(29.5).feet.R, at(27).feet.R)).toBeCloseTo(0, 5);
+    expect(dist(at(30).feet.L, at(27).feet.L)).toBeCloseTo(0, 5);
+    expect(at(30.5).feet.L.y).toBeGreaterThan(0);
+    expect(at(30.5).feet.R.y).toBeGreaterThan(0);
+    expect(at(31).feet.L.y).toBe(0);
+    expect(at(31).weight).toBe('L');
+  });
+});

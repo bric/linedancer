@@ -80,7 +80,10 @@ function applyMove(s, m) {
 
   switch (m.type) {
     case 'step': {
-      if (m.inPlace || !m.dir) {
+      const from = [self.gx, self.gz];
+      if (m.origin && self.ox != null) {
+        place([self.ox, self.oz]);
+      } else if (m.inPlace || !m.dir) {
         place(m.inPlace ? [self.gx, self.gz] : home());
       } else {
         const v = dv(STEP * (m.size ?? 1));
@@ -94,6 +97,7 @@ function applyMove(s, m) {
         const moved = Math.hypot(a[0] - self.x, a[1] - self.z);
         place(moved < 0.5 * Math.hypot(v[0], v[1]) ? b : a);
       }
+      [self.ox, self.oz] = from;
       takeWeight(f);
       if (m.jump) s.fx.jump = true;
       if (m.stomp) s.fx.stomp = f;
@@ -155,10 +159,10 @@ function applyMove(s, m) {
       break;
     }
     case 'heelUp':
-      Object.assign(self, { y: 0.06, pitch: 0.5 });
+      for (const ft of m.both ? [s.feet.L, s.feet.R] : [self]) Object.assign(ft, { y: 0.06, pitch: 0.5 });
       break;
     case 'heelDown':
-      Object.assign(self, { y: 0, pitch: 0 });
+      for (const ft of m.both ? [s.feet.L, s.feet.R] : [self]) Object.assign(ft, { y: 0, pitch: 0 });
       break;
     case 'pivot':
     case 'turn':
